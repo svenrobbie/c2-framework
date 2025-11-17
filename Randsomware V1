@@ -1,8 +1,7 @@
-from cryptography.fernet import Fernet
 import glob
 import hashlib
 from getmac import get_mac_address as gma
-import gnupg
+import Crypto
 
 #Standaardwaarde definieëren.
 Macaddress = gma()
