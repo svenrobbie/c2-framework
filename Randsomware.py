@@ -1,17 +1,15 @@
 import glob
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
+import base64
 
 #Publiek key maken, en in een RSA key functie zetten.
-Pub_key = "-----BEGIN PUBLIC KEY-----\n\
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA20uYlwhKVGj/NPWVxoJs\n\
-XWjsVZYmiTb1AN8DOZ5JyA3N+QAgg/mExhLWGToE2cmIkJsRc+kjfB0a2xumlSSS\n\
-w+/QZFYl0QpNQO4RcjcCpu+UNUArSVe6pOiUMqpgCY/6/2LxzMbUCmq3qSntUNEq\n\
-34qsZamiLmrxiAzyrQNRkKkK70okpmmJMv4H49gGqtqbhq0vadMjKDqXfhNR4p2d\n\
-cP2OH/z8ibYzyX4xl30fECYyxHJrpx+iFQhhAk3kBIKGQ8/a+pSO8a5zkUnqEemE\n\
-JMkhnrM1jzR9BmEkRpYiNtt8Du2JEd7kfxJ/lSWcKVVmXpgpcmpC+FYq1BPy+BWY\n\
-iQIDAQAB\n\
------END PUBLIC KEY-----"
+#Pub key gecodeerd in Base64 Voor transport.
+Pub_key_Base64 = " LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUEyMHVZbHdoS1ZHai9OUFdWeG9KcwpYV2pzVlpZbWlUYjFBTjhET1o1SnlBM04rUUFnZy9tRXhoTFdHVG9FMmNtSWtKc1JjK2tqZkIwYTJ4dW1sU1NTCncrL1FaRllsMFFwTlFPNFJjamNDcHUrVU5VQXJTVmU2cE9pVU1xcGdDWS82LzJMeHpNYlVDbXEzcVNudFVORXEKMzRxc1phbWlMbXJ4aUF6eXJRTlJrS2tLNzBva3BtbUpNdjRINDlnR3F0cWJocTB2YWRNaktEcVhmaE5SNHAyZApjUDJPSC96OGliWXp5WDR4bDMwZkVDWXl4SEpycHgraUZRaGhBazNrQklLR1E4L2ErcFNPOGE1emtVbnFFZW1FCkpNa2huck0xanpSOUJtRWtScFlpTnR0OER1MkpFZDdrZnhKL2xTV2NLVlZtWHBncGNtcEMrRllxMUJQeStCV1kKaVFJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0t"
+Base64_bytes = Pub_key_Base64.encode('ascii')
+Pub_key_string_byte = base64.b64decode(Base64_bytes)
+Pub_key = Pub_key_string_byte.decode('ascii')
+
 RSA_key = RSA.import_key(Pub_key)
 #Gebruik de RSA key in de PKCS1 Encryptie functie.
 cipher_rsa = PKCS1_OAEP.new(RSA_key)
