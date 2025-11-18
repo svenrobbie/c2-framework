@@ -32,9 +32,9 @@ print("Code 200!")
 
 # Scan Dirs voor locatie (Waar ben ik?)
 # Doe een glob.glob() scan voor de beschikbare bestanden (recursive)
-# Side-loaden via orginele .exe installer.
-# MAC als salt + harcoded key.
-# README tegen het einde.
-# Linux based
-# ECC 4096-bit
-# Hoe de Priv key ontvangen? - Staat in Github :)
+# Side-loaden via orginele .AppImage installer.
+# MAC als salt + harcoded key. <-- Nope, PubKey gedaan. (Done)
+# README tegen het einde. (Done)
+# Linux based, .py to .so en intergraten in een .AppImage ofzo?
+# RSA 2096-bit (Done)
+# Hoe de Priv key ontvangen? - Staat in Github :) (API key?, en pullen?)
