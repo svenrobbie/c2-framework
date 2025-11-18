@@ -37,5 +37,5 @@ print("Code 200!")
 # MAC als salt + harcoded key. <-- Nope, PubKey gedaan. (Done)
 # README tegen het einde. (Done)
 # Linux based, .py to .so en intergraten in een .AppImage ofzo?
-# RSA 2096-bit (Done)
+# RSA 2096-bit (Done) of toch ECC 256-bit of 512-bit ? (Waarom of gewoon leuk?)
 # Hoe de Priv key ontvangen? - Staat in Github :) (API key?, en pullen?)
