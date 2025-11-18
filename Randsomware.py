@@ -3,6 +3,13 @@ from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 import base64
 
+#Killswitch Functie
+Killswitch = True
+
+if Killswitch==True:
+    exit()
+else:
+    pass
 #Publiek key maken, en in een RSA key functie zetten.
 #Pub key gecodeerd in Base64 Voor transport.
 Pub_key_Base64 = str(" LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUEyMHVZbHdoS1ZHai9OUFdWeG9KcwpYV2pzVlpZbWlUYjFBTjhET1o1SnlBM04rUUFnZy9tRXhoTFdHVG9FMmNtSWtKc1JjK2tqZkIwYTJ4dW1sU1NTCncrL1FaRllsMFFwTlFPNFJjamNDcHUrVU5VQXJTVmU2cE9pVU1xcGdDWS82LzJMeHpNYlVDbXEzcVNudFVORXEKMzRxc1phbWlMbXJ4aUF6eXJRTlJrS2tLNzBva3BtbUpNdjRINDlnR3F0cWJocTB2YWRNaktEcVhmaE5SNHAyZApjUDJPSC96OGliWXp5WDR4bDMwZkVDWXl4SEpycHgraUZRaGhBazNrQklLR1E4L2ErcFNPOGE1emtVbnFFZW1FCkpNa2huck0xanpSOUJtRWtScFlpTnR0OER1MkpFZDdrZnhKL2xTV2NLVlZtWHBncGNtcEMrRllxMUJQeStCV1kKaVFJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0t")
