@@ -13,6 +13,7 @@ JMkhnrM1jzR9BmEkRpYiNtt8Du2JEd7kfxJ/lSWcKVVmXpgpcmpC+FYq1BPy+BWY\n\
 iQIDAQAB\n\
 -----END PUBLIC KEY-----"
 RSA_key = RSA.import_key(Pub_key)
+#Gebruik de RSA key in de PKCS1 Encryptie functie.
 cipher_rsa = PKCS1_OAEP.new(RSA_key)
 
 #SANDER!!!! HIER BEGINNEN :) - Encryptiefunctie
