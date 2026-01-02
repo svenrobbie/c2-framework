@@ -1,0 +1,13 @@
+#print  ("Hello World!!!!!!")
+#print ('I am Iron Man')
+#We are practicing Python.... It's Awesome!!!!!
+
+
+print ("""I am Iron Man No,
+        i am Tony Stark, 
+       No im Poppy""")
+
+print ("I am Iron Man.\n" + "No, I am Tony Stark.\n" + "No, I am Poppy." )
+
+print ("I am Poppy\n" * 100) 
+

@@ -1,0 +1,22 @@
+#sander zn test doc
+import glob
+
+
+mylist = []
+
+mylist.append( glob.glob("*.txt",recursive=True))  
+mylist.append( glob.glob("*.pdf",recursive=True))  
+mylist.append( glob.glob("*.xml",recursive=True))
+mylist.append( glob.glob("*.ods",recursive=True)) 
+mylist.append( glob.glob("*.odt",recursive=True)) 
+mylist.append( glob.glob("*.docx",recursive=True)) 
+
+
+
+
+
+
+
+
+
+print(mylist)   

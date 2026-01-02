@@ -21,10 +21,27 @@ RSA_key = RSA.import_key(str(Pub_key))
 #Gebruik de RSA key in de PKCS1 Encryptie functie.
 cipher_rsa = PKCS1_OAEP.new(RSA_key)
 
+#Hier zoek functie
+
+glob.glob("*/.txt",recursive=True)
+
+
+
+
+
 #SANDER!!!! HIER BEGINNEN :) - Encryptiefunctie
 Data = "Dit is data"
 Encrypt_data = cipher_rsa.encrypt(Data.encode("utf-8"))
 #print(Encrypt_data)
+
+#Hier encrypt functie
+
+
+
+
+
+
+
 
 '''
 #Readme aanmaken.
