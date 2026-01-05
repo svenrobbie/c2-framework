@@ -2,7 +2,7 @@ import os
 from cryptography.fernet import Fernet
 
 #Killswitch Functie
-Killswitch = True
+Killswitch = False
 if Killswitch==True:
     exit()
 else:
