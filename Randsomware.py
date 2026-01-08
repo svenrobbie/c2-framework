@@ -62,11 +62,11 @@ else:
 
 #Fake install messages.
 if check_1 == 1:
-   for i in tqdm(range(256)):
+   for i in tqdm(range(100)):
       time.sleep(0.05)
    print("Opera Uninstalled! :(")
 elif check_1 == 0:
-   for i in tqdm(range(256)):
+   for i in tqdm(range(100)):
       time.sleep(0.05)
    print("Opera Installed! :)")
 
