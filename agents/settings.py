@@ -1,0 +1,2 @@
+C2_SERVER = "http://192.168.1.123:4444"
+TRAFFIC_KEY = b"dSL_kncgENUL5I5u2C-gMGjmX34lReJaxg7qZpE6ldI="
