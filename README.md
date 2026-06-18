@@ -9,13 +9,13 @@ C2 beaconing, staged deployment for AV evasion, and a modern WebSocket-powered R
 ## Architecture
 
 ```
-┌────────────────────────┐     HTTPS/beacon     ┌──────────────────────────────┐
-│    Victim Machine      │◄────────────────────►│         C2 Server            │
-│                        │    commands/results   │                              │
-│  hw_detect (stager)    │                      │  Flask + SocketIO (port 4444)│
+┌────────────────────────┐     HTTPS/beacon     ┌───────────────────────────────┐
+│    Victim Machine      │◄────────────────────►│         C2 Server             │
+│                        │    commands/results  │                               │
+│  hw_detect (stager)    │                      │  Flask + SocketIO (port 4444) │
 │  gpu_helper (ransom.)  │                      │  SQLite DB (encrypted at rest)│
-│                        │                      │  WebSocket → React Dashboard │
-└────────────────────────┘                      └──────────────────────────────┘
+│                        │                      │  WebSocket → React Dashboard  │
+└────────────────────────┘                      └───────────────────────────────┘
 ```
 
 ## Directory Structure

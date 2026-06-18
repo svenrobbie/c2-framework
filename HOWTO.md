@@ -62,15 +62,15 @@ This project simulates ransomware in a controlled environment. It demonstrates:
 
 ```
 ┌──────────────────┐    1. beacon      ┌──────────────────────────────┐
-│  hw_detect        │◄──────────────────►│         C2 Server            │
-│  (~1 MB, stdlib) │   2. "deploy" cmd  │                              │
-│                   │                    │  Port 4444                   │
-│        ▼          │   3. Download      │                              │
-│  gpu_helper       │◄───────────────────│  /download_payload           │
-│  (~15 MB)         │                    │                              │
-│                   │   4. Spawn +      │  Uploaded by build.py        │
-│                   │      watchdog     │                              │
-└──────────────────┘                    └──────────────────────────────┘
+│  hw_detect       │◄─────────────────►│         C2 Server            │
+│  (~1 MB, stdlib) │   2. "deploy" cmd │                              │
+│                  │                   │  Port 4444                   │
+│        ▼         │   3. Download     │                              │
+│  gpu_helper      │◄──────────────────│  /download_payload           │
+│  (~15 MB)        │                   │                              │
+│                  │   4. Spawn +      │  Uploaded by build.py        │
+│                  │      watchdog     │                              │
+└──────────────────┘                   └──────────────────────────────┘
 ```
 
 ---
