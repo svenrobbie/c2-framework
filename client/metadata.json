@@ -1,0 +1,6 @@
+{
+  "name": "RogueByte C2 Dashboard",
+  "description": "An interactive Command & Control framework representation with live victim lists, automated telemetry simulator, interactive command terminals, and secure visual operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
