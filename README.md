@@ -1,32 +1,88 @@
-RSA Randsomware
+# RogueByte's C2 Framework
 
-A lightweight pythonscript that recursively encrypts all files within a specified directory using RSA public-key encryption.
+> **WARNING:** For educational use only in isolated, controlled environments (VMs, lab networks).
+> Only run on files you own or have explicit permission to encrypt.
 
-Features
+Cross-platform (Linux/Windows) ransomware simulation with hybrid encryption (RSA + Fernet),
+C2 beaconing, staged deployment for AV evasion, and a modern WebSocket-powered React dashboard.
 
-🔐 RSA Public-Key Encryption
-Uses a provided RSA public key to encrypt all files.
-Only holders of the matching private key can decrypt.
+## Architecture
 
-📁 Recursive Directory Encryption
-Automatically walks through all subdirectories and encrypts each file.
+```
+┌────────────────────────┐     HTTPS/beacon     ┌──────────────────────────────┐
+│    Victim Machine      │◄────────────────────►│         C2 Server            │
+│                        │    commands/results   │                              │
+│  hw_detect (stager)    │                      │  Flask + SocketIO (port 4444)│
+│  gpu_helper (ransom.)  │                      │  SQLite DB (encrypted at rest)│
+│                        │                      │  WebSocket → React Dashboard │
+└────────────────────────┘                      └──────────────────────────────┘
+```
 
-🛡️ Safe Encryption Process
+## Directory Structure
 
-Automatically skips already-encrypted files to avoid corruption.
+```
+├── agents/              → hw_detect stager + gpu_helper ransomware agent
+├── server/              → C2 server (Flask + SocketIO + Gevent)
+│   ├── c2_server.py
+│   ├── data/            → SQLite DB, keys/, exfil/
+│   └── static/          → React SPA (Vite build output)
+├── client/              → React + Vite dashboard source
+│   └── src/
+├── tools/               → key_gen.py + build.py (PyInstaller + Docker cross-compile)
+├── lib/                 → Shared modules (persistence, crypto, evasion, browser_stealer)
+├── dist/                → Compiled binaries (linux/ + windows/)
+├── Backup - Keys/       → RSA/ECC keypair backups
+└── legacy/              → Archived V1 prototype
+```
 
-How It Works
+## Quick Start
 
-The tool loads an RSA public key from memory. (Hardcoded)
+```bash
+pip install -r requirements.txt              # Dependencies
+python3 tools/key_gen.py                      # Generate RSA keypair
+python3 server/c2_server.py                   # Start C2 on :4444
+python3 agents/ransomware_linux.py            # Run agent (dev mode, Linux)
+```
 
-All files in the target directory are scanned recursively.
+Open http://localhost:4444 in a browser.
 
-For each file:
+## Agent Commands
 
-File contents are encrypted.
+| Command | Stager | Ransomware | Description |
+|---|---|---|---|
+| `deploy` | ✅ | ❌ | Download gpu_helper from C2, spawn it, start watchdog |
+| `encrypt` | ❌ | ✅ | Encrypt targeted files with RSA + Fernet |
+| `decrypt` | ❌ | ✅ | Decrypt files with RSA private key |
+| `exec` | ✅ | ✅ | Run a shell command (returns stdout/stderr) |
+| `persist` | ✅ | ✅ | Install systemd/Registry persistence |
+| `self_destruct` | ✅ | ✅ | Remove persistence, delete binaries, exit |
+| `status` | ✅ | ✅ | Report system info and state |
+| `screenshot` | ❌ | ✅ | Capture desktop screenshot |
+| `pslist` | ❌ | ✅ | List running processes |
+| `pskill` | ❌ | ✅ | Kill a process by PID |
+| `steal_browsers` | ❌ | ✅ | Exfiltrate browser profile data |
+| `scare` | ❌ | ✅ | Scatter DedSec GIFs across system, open 5 in browser |
+| `download` | ❌ | ✅ | Download a file from victim |
+| `upload` | ❌ | ✅ | Upload a file to victim |
+| `network_info` | ❌ | ✅ | Show network connections |
+| `show_ransomnote` | ❌ | ✅ | Display ransom note |
+| `terminal` | ❌ | ✅ | Interactive shell session |
 
-The file content is encrypted using the RSA public key.
+## Building for Production
 
-An output file (e.g., <filename>.<extension>) is created & overwrites the old file.
+```bash
+python3 server/c2_server.py   # Must be running first (generates traffic key)
+python3 tools/build.py         # Compiles hw_detect + gpu_helper for Linux + Windows
+```
 
-An README is created that will tell the user where to wire money for the decryption key.
+Output goes to `dist/linux/` and `dist/windows/`. The build script auto-uploads
+`gpu_helper` to the C2 server for staged deployment.
+
+## Security Notes
+
+- All victim data at rest is Fernet-encrypted in SQLite (`c2_key.key`)
+- Beacon traffic is Fernet-encrypted, disguised as analytics telemetry
+- RSA-2048 private key is **never** embedded in the agent
+- Runtime keys stored in `server/data/keys/` (not in the repo — see `.gitignore`)
+- `C2_API_KEY` env var for REST API authentication
+- `C2_SHUTDOWN_KEY` env var (default: `shutdown`) for `/api/shutdown`
