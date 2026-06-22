@@ -19,7 +19,7 @@ class LoginScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Label('[bold #00d4ff]ROGUEBYTE C2[/] [#ffd700]v0.1.9-Beta[/]', id='login-title'),
+            Label('[bold #00d4ff]ROGUEBYTE C2[/] [#ffd700]v0.2.1-Beta[/]', id='login-title'),
             Label(id='login-prompt'),
             Input(placeholder='Password', password=True, id='password-input'),
             Label(id='login-error'),
@@ -316,7 +316,7 @@ class C2App(App):
 
     def on_mount(self):
         self.title = 'RogueByte C2'
-        self.sub_title = 'v0.1.9-Beta'
+        self.sub_title = 'v0.2.1-Beta'
         if self.client.locked:
             self.push_screen(LoginScreen(self.client))
         else:

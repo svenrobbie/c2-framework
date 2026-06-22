@@ -25,7 +25,7 @@ class HeaderWidget(Static):
         dot = '●' if self.client.connected else '○'
         color = '#00e676' if self.client.connected else '#ff6b6b'
         self.update(
-            f'[bold #00d4ff]ROGUEBYTE C2[/] [#ffd700]v0.1.9-Beta[/]    '
+            f'[bold #00d4ff]ROGUEBYTE C2[/] [#ffd700]v0.2.1-Beta[/]    '
             f'[{color}]{dot} [{"#00e676" if self.client.connected else "#ff6b6b"}]'
             f'{"ONLINE" if self.client.connected else "OFFLINE"}[/]    '
             f'[#e6edf3]{n_victims} implant{"s" if n_victims != 1 else ""}[/]    '

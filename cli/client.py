@@ -21,7 +21,10 @@ class C2Client:
 
     def _emit(self, event, *args):
         if self.on_update:
-            self.on_update(event, *args)
+            try:
+                self.on_update(event, *args)
+            except Exception:
+                pass
 
     def _setup_socketio(self):
         @self.sio.on('connect')
@@ -30,7 +33,7 @@ class C2Client:
             self._emit('connected')
 
         @self.sio.on('disconnect')
-        def _on_disconnect():
+        def _on_disconnect(*args):
             self.connected = False
             self._emit('disconnected')
 

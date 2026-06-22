@@ -1070,7 +1070,7 @@ def alert_log():
 def root():
     return jsonify({
         'status': 'ok',
-        'version': '0.1.9-Beta',
+        'version': '0.2.1-Beta',
         'locked': crypto is None,
         'needs_setup': _needs_setup(),
     })
