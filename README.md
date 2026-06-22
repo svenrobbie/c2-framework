@@ -9,7 +9,7 @@ Cross-platform C2 framework with plugin-extensible agents, live WebSocket dashbo
 ```
 ┌──────────────────────────┐     beacon/http      ┌──────────────────────────────────┐
 │    Victim (Agent)        │◄────────────────────►│          C2 Server               │
-│                          │    commands/plugins   │                                  │
+│                          │    commands/plugins  │                                  │
 │  HW_DETECT (stager)      │                      │  Flask + SocketIO + Gevent       │
 │  GPU_HELPER (framework)  │                      │  SQLite DB (Fernet-encrypted)    │
 │    ├─ plugin: crypto     │                      │  Passphrase-protected unlock     │
@@ -19,7 +19,7 @@ Cross-platform C2 framework with plugin-extensible agents, live WebSocket dashbo
                           │   Dashboard       │
                           │   (TypeScript)    │
                           │   Plugins UI      │
-                          │   Alert Rules UI   │
+                          │   Alert Rules UI  │
                           └───────────────────┘
 ```
 
