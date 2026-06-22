@@ -209,7 +209,7 @@ export default function App() {
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <span className="font-sans text-sm font-black text-slate-200 tracking-wider">ROGUEBYTE C2</span>
-              <span className="text-[9px] bg-cyan-950 text-cyan-400 px-1.5 py-0.2 rounded font-mono font-bold tracking-widest border border-cyan-500/20">PRO-V2</span>
+              <span className="text-[9px] bg-cyan-950 text-cyan-400 px-1.5 py-0.2 rounded font-mono font-bold tracking-widest border border-cyan-500/20">V0.1.9-Beta</span>
             </div>
             <span className="hidden sm:inline font-mono text-[9px] text-slate-500 tracking-wider uppercase leading-none mt-0.5">
               PERSISTENT COMMAND & CONTROL INTERACTIVE FABRIC
