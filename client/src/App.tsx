@@ -18,7 +18,9 @@ import {
   CheckCircle,
   Clock,
   Skull,
-  Moon
+  Moon,
+  Package,
+  Bell
 } from 'lucide-react';
 import useSocket from './hooks/useSocket';
 import { Victim, LogEntry, backendVictimToDashboard, backendLogToDashboard, COMMAND_MAP } from './types';
@@ -28,11 +30,14 @@ import { CommandLog } from './components/CommandLog';
 import { IntelligenceFeed } from './components/IntelligenceFeed';
 import { HelpModal } from './components/HelpModal';
 import { LoginPage } from './components/LoginPage';
+import { PluginsPanel } from './components/PluginsPanel';
+import { AlertRules } from './components/AlertRules';
+import { AlertLog } from './components/AlertLog';
 
 let logIdCounter = 0;
 
 export default function App() {
-  const { victims: backendVictims, logs: backendLogs, connected, locked, needsSetup, unlockError, autoDeploy, sendCommand, unlockServer, setupPassword, clearUnlockError } = useSocket();
+  const { victims: backendVictims, logs: backendLogs, connected, locked, needsSetup, unlockError, autoDeploy, alertLog, sendCommand, unlockServer, setupPassword, clearUnlockError } = useSocket();
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -41,6 +46,7 @@ export default function App() {
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isServerOnline, setIsServerOnline] = useState<boolean>(true);
   const [contrastMode, setContrastMode] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'implants' | 'plugins' | 'alerts'>('implants');
   const [toastMessage, setToastMessage] = useState<{ title: string; message: string; type: 'success' | 'danger' | 'warning' } | null>({
     title: 'C2 BROADCAST ONLINE',
     message: 'Encrypted tactical tunnel established to server clusters',
@@ -286,108 +292,154 @@ export default function App() {
         </div>
       </header>
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
-        
-        <section className="flex-1 md:flex-[1.5] lg:flex-[1.7] flex flex-col border-r border-slate-900 bg-slate-950/60 overflow-hidden min-h-[400px] md:min-h-0">
-          
-          <div className="px-5 py-3 flex flex-col sm:flex-row gap-3 items-center justify-between bg-slate-900/40 border-b border-slate-900 shrink-0">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <Database className="h-4 w-4 text-primary" />
-              <h1 className="font-mono text-xs font-bold text-primary uppercase tracking-wider">
-                TARGET IMPLANTS DIRECTORY ({filteredVictims.length})
-              </h1>
-            </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:flex-initial">
-                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Hostname, IP, OS..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full sm:w-44 bg-slate-950/80 border border-slate-900 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/80 font-mono transition-colors"
-                />
-              </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-slate-950/80 border border-slate-900 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500/80 font-mono transition-colors shrink-0"
-              >
-                <option value="ALL">Status: All</option>
-                <option value="ONLINE">Online Status</option>
-                <option value="ENCRYPTED">Encrypted Status</option>
-                <option value="WATCHDOG">Watchdog Triggered</option>
-                <option value="OFFLINE">Offline State</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-3">
-            {filteredVictims.length === 0 ? (
-              <div className="text-center py-12 text-slate-600 font-mono text-xs italic">
-                &lt; No targets found matching query parameters &gt;
-              </div>
-            ) : (
-              filteredVictims.map((v) => (
-                <VictimItem
-                  key={v.id}
-                  victim={v}
-                  isSelected={v.id === selectedID}
-                  onSelect={() => setSelectedID(v.id)}
-                />
-              ))
-            )}
-          </div>
-        </section>
-
-        <section className="flex-1 md:flex-[1.2] lg:flex-[1.4] flex flex-col border-r border-slate-900 bg-slate-950/20 overflow-y-auto custom-scrollbar p-5 gap-5 min-h-[400px] md:min-h-0">
-          <div>
-            <span className="font-mono text-[9px] text-slate-500 font-bold uppercase tracking-widest block mb-1">
-              ACTIVE NODE CONTROL CONSOLE
-            </span>
-            <h2 className="font-sans text-sm font-black text-primary tracking-tight uppercase">
-              Implant Operation Center
-            </h2>
-          </div>
-
-          {selectedVictim ? (
-            <VictimDetail
-              victim={selectedVictim}
-              onAction={handleAction}
-              isActionInProgress={actionInProgress}
-            />
-          ) : (
-            <div className="p-8 text-center text-slate-500 font-mono text-xs italic border border-dashed border-slate-800 rounded-xl my-auto">
-              Waiting for agents to beacon...
-            </div>
-          )}
-
-          <IntelligenceFeed victims={victims} />
-        </section>
-
-        <section className="flex-1 md:flex-[1.4] lg:flex-[1.6] flex flex-col bg-slate-950/80 overflow-hidden min-h-[450px] md:min-h-0">
-          <CommandLog logs={logs} onClearLogs={handleClearLogs} />
-
-          <form 
-            onSubmit={handleCliSubmit}
-            className="p-3 bg-slate-950 border-t border-slate-900 flex items-center gap-3 shrink-0"
-          >
-            <span className="text-primary font-bold font-mono text-xs select-none">$&gt;</span>
-            <input
-              type="text"
-              value={cliCommand}
-              onChange={(e) => setCliCommand(e.target.value)}
-              placeholder="Type a command and press Enter to execute on the selected target"
-              className="bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-xs font-mono text-primary flex-1 placeholder:text-slate-700/80"
-            />
-            <div className="flex gap-2">
-              <span className="hidden sm:inline font-mono text-[9px] text-slate-500 px-1.5 py-0.5 border border-slate-800 rounded select-none uppercase tracking-wider">
-                Press Enter
-              </span>
-            </div>
-          </form>
-        </section>
+      <div className="shrink-0 flex items-center gap-1 px-5 py-1.5 bg-slate-950/80 border-b border-slate-900">
+        <button onClick={() => setActiveTab('implants')}
+          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
+            activeTab === 'implants' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' : 'text-slate-500 hover:text-slate-300 border border-transparent'
+          }`}>
+          <Database className="h-3 w-3 inline mr-1.5" />Implants
+        </button>
+        <button onClick={() => setActiveTab('plugins')}
+          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
+            activeTab === 'plugins' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' : 'text-slate-500 hover:text-slate-300 border border-transparent'
+          }`}>
+          <Package className="h-3 w-3 inline mr-1.5" />Plugins
+        </button>
+        <button onClick={() => setActiveTab('alerts')}
+          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
+            activeTab === 'alerts' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' : 'text-slate-500 hover:text-slate-300 border border-transparent'
+          }`}>
+          <Bell className="h-3 w-3 inline mr-1.5" />Alerts
+        </button>
+        <div className="flex-1" />
+        <span className="text-[9px] text-slate-600 font-mono">{victims.length} implants · {alertLog.length} alerts</span>
       </div>
+
+      {activeTab === 'implants' && (
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+          
+          <section className="flex-1 md:flex-[1.5] lg:flex-[1.7] flex flex-col border-r border-slate-900 bg-slate-950/60 overflow-hidden min-h-[400px] md:min-h-0">
+            
+            <div className="px-5 py-3 flex flex-col sm:flex-row gap-3 items-center justify-between bg-slate-900/40 border-b border-slate-900 shrink-0">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Database className="h-4 w-4 text-primary" />
+                <h1 className="font-mono text-xs font-bold text-primary uppercase tracking-wider">
+                  TARGET IMPLANTS DIRECTORY ({filteredVictims.length})
+                </h1>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:flex-initial">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Hostname, IP, OS..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full sm:w-44 bg-slate-950/80 border border-slate-900 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/80 font-mono transition-colors"
+                  />
+                </div>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="bg-slate-950/80 border border-slate-900 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-cyan-500/80 font-mono transition-colors shrink-0"
+                >
+                  <option value="ALL">Status: All</option>
+                  <option value="ONLINE">Online Status</option>
+                  <option value="ENCRYPTED">Encrypted Status</option>
+                  <option value="WATCHDOG">Watchdog Triggered</option>
+                  <option value="OFFLINE">Offline State</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-3">
+              {filteredVictims.length === 0 ? (
+                <div className="text-center py-12 text-slate-600 font-mono text-xs italic">
+                  &lt; No targets found matching query parameters &gt;
+                </div>
+              ) : (
+                filteredVictims.map((v) => (
+                  <VictimItem
+                    key={v.id}
+                    victim={v}
+                    isSelected={v.id === selectedID}
+                    onSelect={() => setSelectedID(v.id)}
+                  />
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="flex-1 md:flex-[1.2] lg:flex-[1.4] flex flex-col border-r border-slate-900 bg-slate-950/20 overflow-y-auto custom-scrollbar p-5 gap-5 min-h-[400px] md:min-h-0">
+            <div>
+              <span className="font-mono text-[9px] text-slate-500 font-bold uppercase tracking-widest block mb-1">
+                ACTIVE NODE CONTROL CONSOLE
+              </span>
+              <h2 className="font-sans text-sm font-black text-primary tracking-tight uppercase">
+                Implant Operation Center
+              </h2>
+            </div>
+
+            {selectedVictim ? (
+              <VictimDetail
+                victim={selectedVictim}
+                onAction={handleAction}
+                isActionInProgress={actionInProgress}
+              />
+            ) : (
+              <div className="p-8 text-center text-slate-500 font-mono text-xs italic border border-dashed border-slate-800 rounded-xl my-auto">
+                Waiting for agents to beacon...
+              </div>
+            )}
+
+            <IntelligenceFeed victims={victims} />
+          </section>
+
+          <section className="flex-1 md:flex-[1.4] lg:flex-[1.6] flex flex-col bg-slate-950/80 overflow-hidden min-h-[450px] md:min-h-0">
+            <CommandLog logs={logs} onClearLogs={handleClearLogs} />
+
+            <form 
+              onSubmit={handleCliSubmit}
+              className="p-3 bg-slate-950 border-t border-slate-900 flex items-center gap-3 shrink-0"
+            >
+              <span className="text-primary font-bold font-mono text-xs select-none">$&gt;</span>
+              <input
+                type="text"
+                value={cliCommand}
+                onChange={(e) => setCliCommand(e.target.value)}
+                placeholder="Type a command and press Enter to execute on the selected target"
+                className="bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-xs font-mono text-primary flex-1 placeholder:text-slate-700/80"
+              />
+              <div className="flex gap-2">
+                <span className="hidden sm:inline font-mono text-[9px] text-slate-500 px-1.5 py-0.5 border border-slate-800 rounded select-none uppercase tracking-wider">
+                  Press Enter
+                </span>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {activeTab === 'plugins' && (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <PluginsPanel
+            victims={victims.map((v) => ({ id: v.id, hostname: v.hostname }))}
+            sendCommand={sendCommand}
+            setToastMessage={setToastMessage}
+          />
+        </div>
+      )}
+
+      {activeTab === 'alerts' && (
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+          <section className="flex-1 md:flex-[1.2] flex flex-col overflow-y-auto custom-scrollbar p-5 gap-5 bg-slate-950/40 border-r border-slate-900">
+            <AlertRules setToastMessage={setToastMessage} />
+          </section>
+          <section className="flex-1 md:flex-[1] flex flex-col overflow-y-auto custom-scrollbar p-5 bg-slate-950/80">
+            <AlertLog liveEntries={alertLog} />
+          </section>
+        </div>
+      )}
 
       {toastMessage && (
         <div className="fixed top-16 right-4 z-[105] flex flex-col gap-2 max-w-sm pointer-events-none">

