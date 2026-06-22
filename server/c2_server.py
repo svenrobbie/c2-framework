@@ -8,7 +8,7 @@ import base64
 import logging
 from datetime import datetime
 
-from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask import Flask, request, jsonify, send_file
 from flask_socketio import SocketIO, emit
 from cryptography.fernet import Fernet
 
@@ -1066,22 +1066,14 @@ def alert_log():
     return jsonify(_get_alert_log(hostname))
 
 
-SPA_DIR = os.path.join(os.path.dirname(__file__), 'static')
-
-
-@app.route('/assets/<path:filename>')
-def spa_assets(filename):
-    return send_from_directory(os.path.join(SPA_DIR, 'assets'), filename)
-
-
 @app.route('/')
-@app.route('/<path:path>')
-def serve_spa(path=''):
-    if path:
-        filepath = os.path.join(SPA_DIR, path)
-        if os.path.exists(filepath) and os.path.isfile(filepath):
-            return send_from_directory(SPA_DIR, path)
-    return send_from_directory(SPA_DIR, 'index.html')
+def root():
+    return jsonify({
+        'status': 'ok',
+        'version': '0.1.9-Beta',
+        'locked': crypto is None,
+        'needs_setup': _needs_setup(),
+    })
 
 
 if __name__ == '__main__':
