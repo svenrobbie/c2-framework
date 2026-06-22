@@ -34,16 +34,25 @@ interface UseSocketReturn {
   victims: Record<string, BackendVictimInfo>;
   logs: BackendLogEntry[];
   connected: boolean;
+  locked: boolean;
+  needsSetup: boolean;
+  unlockError: string;
   autoDeploy: Record<string, boolean>;
   stats: { victimCount: number; logCount: number };
   sendCommand: (hostname: string, command: string, params?: Record<string, string>) => void;
   toggleAutoDeploy: (hostname: string, enabled: boolean) => void;
+  unlockServer: (password: string) => void;
+  setupPassword: (password: string) => void;
+  clearUnlockError: () => void;
 }
 
 export default function useSocket(): UseSocketReturn {
   const [victims, setVictims] = useState<Record<string, BackendVictimInfo>>({});
   const [logs, setLogs] = useState<BackendLogEntry[]>([]);
   const [connected, setConnected] = useState(false);
+  const [locked, setLocked] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [unlockError, setUnlockError] = useState('');
   const [autoDeploy, setAutoDeploy] = useState<Record<string, boolean>>({});
   const [stats, setStats] = useState({ victimCount: 0, logCount: 0 });
   const socketRef = useRef<Socket | null>(null);
@@ -53,10 +62,29 @@ export default function useSocket(): UseSocketReturn {
 
     s.on('connect', () => {
       setConnected(true);
+      setUnlockError('');
+    });
+
+    s.on('unlock_result', (data: { success: boolean; error?: string }) => {
+      if (!data.success) {
+        setUnlockError(data.error || 'Invalid password');
+      }
     });
 
     s.on('disconnect', () => {
       setConnected(false);
+    });
+
+    s.on('server_state', (data: { locked: boolean; needs_setup?: boolean }) => {
+      setLocked(data.locked);
+      setNeedsSetup(data.needs_setup ?? false);
+    });
+
+    s.on('server_unlocked', (data: { success: boolean; first_time?: boolean }) => {
+      if (data.success) {
+        setLocked(false);
+        setNeedsSetup(false);
+      }
     });
 
     s.on('dashboard_state', (data: {
@@ -64,6 +92,8 @@ export default function useSocket(): UseSocketReturn {
       logs?: BackendLogEntry[];
       auto_deploy_targets?: string[];
     }) => {
+      setLocked(false);
+      setNeedsSetup(false);
       setVictims(data.victims || {});
       setLogs(data.logs || []);
       const ad: Record<string, boolean> = {};
@@ -125,5 +155,21 @@ export default function useSocket(): UseSocketReturn {
     }
   }, []);
 
-  return { victims, logs, connected, autoDeploy, stats, sendCommand, toggleAutoDeploy };
+  const unlockServer = useCallback((password: string) => {
+    if (socketRef.current) {
+      socketRef.current.emit('unlock_server', { password });
+    }
+  }, []);
+
+  const setupPassword = useCallback((password: string) => {
+    if (socketRef.current) {
+      socketRef.current.emit('unlock_server', { password });
+    }
+  }, []);
+
+  const clearUnlockError = useCallback(() => {
+    setUnlockError('');
+  }, []);
+
+  return { victims, logs, connected, locked, needsSetup, unlockError, autoDeploy, stats, sendCommand, toggleAutoDeploy, unlockServer, setupPassword, clearUnlockError };
 }

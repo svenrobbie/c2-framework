@@ -27,11 +27,12 @@ import { VictimDetail } from './components/VictimDetail';
 import { CommandLog } from './components/CommandLog';
 import { IntelligenceFeed } from './components/IntelligenceFeed';
 import { HelpModal } from './components/HelpModal';
+import { LoginPage } from './components/LoginPage';
 
 let logIdCounter = 0;
 
 export default function App() {
-  const { victims: backendVictims, logs: backendLogs, connected, autoDeploy, sendCommand } = useSocket();
+  const { victims: backendVictims, logs: backendLogs, connected, locked, needsSetup, unlockError, autoDeploy, sendCommand, unlockServer, setupPassword, clearUnlockError } = useSocket();
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -137,6 +138,19 @@ export default function App() {
     if (statusFilter === 'ALL') return matchesSearch;
     return matchesSearch && v.status === statusFilter;
   });
+
+  if (locked) {
+    return (
+      <LoginPage
+        needsSetup={needsSetup}
+        error={unlockError}
+        onUnlock={unlockServer}
+        onSetup={setupPassword}
+        onErrorClear={clearUnlockError}
+        connected={connected}
+      />
+    );
+  }
 
   if (!isServerOnline) {
     return (

