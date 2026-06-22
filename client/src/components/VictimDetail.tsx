@@ -10,6 +10,7 @@ interface VictimDetailProps {
 
 export const VictimDetail: React.FC<VictimDetailProps> = ({ victim, onAction, isActionInProgress }) => {
   const isOffline = victim.status === 'OFFLINE';
+  const hasCrypto = (victim.loadedPlugins || []).includes('crypto');
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -87,11 +88,11 @@ export const VictimDetail: React.FC<VictimDetailProps> = ({ victim, onAction, is
           TACTICAL OPERATIONS
         </span>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <ActionButton onClick={() => onAction('encrypt')} disabled={isActionInProgress || isOffline || victim.status === 'ENCRYPTED'}
+          <ActionButton onClick={() => onAction('encrypt')} disabled={isActionInProgress || isOffline || victim.status === 'ENCRYPTED' || !hasCrypto}
             className="bg-rose-950/40 hover:bg-rose-900/40 text-rose-400 border-rose-500/30 disabled:opacity-40">
             <ShieldAlert className="h-3.5 w-3.5" /> Encrypt
           </ActionButton>
-          <ActionButton onClick={() => onAction('decrypt')} disabled={isActionInProgress || isOffline || victim.status !== 'ENCRYPTED'}
+          <ActionButton onClick={() => onAction('decrypt')} disabled={isActionInProgress || isOffline || victim.status !== 'ENCRYPTED' || !hasCrypto}
             className="bg-amber-950/40 hover:bg-amber-900/40 text-amber-400 border-amber-500/30 disabled:opacity-40">
             <RefreshCw className="h-3.5 w-3.5" /> Decrypt
           </ActionButton>

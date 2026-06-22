@@ -174,15 +174,35 @@ export default function useSocket(): UseSocketReturn {
     }
   }, []);
 
-  const unlockServer = useCallback((password: string) => {
-    if (socketRef.current) {
-      socketRef.current.emit('unlock_server', { password });
+  const unlockServer = useCallback(async (password: string) => {
+    try {
+      const resp = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        setUnlockError(err.error || 'Invalid password');
+      }
+    } catch {
+      setUnlockError('Connection error');
     }
   }, []);
 
-  const setupPassword = useCallback((password: string) => {
-    if (socketRef.current) {
-      socketRef.current.emit('unlock_server', { password });
+  const setupPassword = useCallback(async (password: string) => {
+    try {
+      const resp = await fetch('/api/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        setUnlockError(err.error || 'Setup failed');
+      }
+    } catch {
+      setUnlockError('Connection error');
     }
   }, []);
 

