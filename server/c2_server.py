@@ -818,7 +818,7 @@ def plugin_status():
 SHUTDOWN_KEY = os.environ.get('C2_SHUTDOWN_KEY', 'shutdown')
 
 
-PUBLIC_ROUTES = ['/api/login', '/api/setup', '/assets/', '/api/shutdown', '/api/telemetry']
+PUBLIC_ROUTES = ['/api/login', '/api/setup', '/assets/', '/api/shutdown', '/api/telemetry', '/api/challenge']
 
 
 @app.before_request
@@ -832,6 +832,39 @@ def lock_check():
         if path.startswith(prefix):
             return
     return jsonify({'error': 'server locked'}), 401
+
+
+@app.route('/api/challenge', methods=['POST'])
+def handle_challenge():
+    data = request.json or {}
+    challenge = data.get('challenge', '')
+    build_number = data.get('build_number', '')
+    if not challenge or not build_number:
+        return jsonify({'error': 'missing challenge or build_number'}), 400
+    try:
+        build_number = int(build_number)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'invalid build_number'}), 400
+    priv_key_pem = get_private_key(build_number)
+    if not priv_key_pem:
+        return jsonify({'error': 'unknown build'}), 404
+    try:
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+        private_key = load_pem_private_key(priv_key_pem.encode(), password=None)
+        signature = private_key.sign(
+            challenge.encode(),
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+        return jsonify({'signature': base64.b64encode(signature).decode()})
+    except Exception as e:
+        logger.error("Challenge signing failed: %s", e)
+        return jsonify({'error': 'signing failed'}), 500
 
 
 @app.route('/api/login', methods=['POST'])
