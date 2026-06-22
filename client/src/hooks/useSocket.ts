@@ -47,13 +47,13 @@ interface UseSocketReturn {
   needsSetup: boolean;
   unlockError: string;
   autoDeploy: Record<string, boolean>;
-  stats: { victimCount: number; logCount: number };
   alertLog: AlertLogEntry[];
   sendCommand: (hostname: string, command: string, params?: Record<string, string>) => void;
   toggleAutoDeploy: (hostname: string, enabled: boolean) => void;
   unlockServer: (password: string) => void;
   setupPassword: (password: string) => void;
   clearUnlockError: () => void;
+  clearLogs: () => void;
 }
 
 export default function useSocket(): UseSocketReturn {
@@ -65,7 +65,6 @@ export default function useSocket(): UseSocketReturn {
   const [unlockError, setUnlockError] = useState('');
   const [autoDeploy, setAutoDeploy] = useState<Record<string, boolean>>({});
   const [alertLog, setAlertLog] = useState<AlertLogEntry[]>([]);
-  const [stats, setStats] = useState({ victimCount: 0, logCount: 0 });
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -147,20 +146,9 @@ export default function useSocket(): UseSocketReturn {
       setAlertLog(prev => [data, ...prev].slice(0, 200));
     });
 
-    s.on('alert_log_update', (data: { entry: AlertLogEntry }) => {
-      setAlertLog(prev => [data.entry, ...prev].slice(0, 200));
-    });
-
     socketRef.current = s;
     return () => { s.disconnect(); };
   }, []);
-
-  useEffect(() => {
-    setStats({
-      victimCount: Object.keys(victims).length,
-      logCount: logs.length,
-    });
-  }, [victims, logs]);
 
   const sendCommand = useCallback((hostname: string, command: string, params: Record<string, string> = {}) => {
     if (socketRef.current) {
@@ -210,5 +198,9 @@ export default function useSocket(): UseSocketReturn {
     setUnlockError('');
   }, []);
 
-  return { victims, logs, connected, locked, needsSetup, unlockError, autoDeploy, stats, alertLog, sendCommand, toggleAutoDeploy, unlockServer, setupPassword, clearUnlockError };
+  const clearLogs = useCallback(() => {
+    setLogs([]);
+  }, []);
+
+  return { victims, logs, connected, locked, needsSetup, unlockError, autoDeploy, alertLog, sendCommand, toggleAutoDeploy, unlockServer, setupPassword, clearUnlockError, clearLogs };
 }

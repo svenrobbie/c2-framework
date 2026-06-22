@@ -3,21 +3,8 @@ import {
   ShieldAlert, 
   Database, 
   Terminal, 
-  AlertOctagon, 
-  Settings, 
   HelpCircle, 
-  Filter, 
-  Trash2, 
-  Zap, 
-  Cpu, 
-  HardDrive, 
-  Activity, 
-  Radio, 
-  Power,
   Search,
-  CheckCircle,
-  Clock,
-  Skull,
   Moon,
   Package,
   Bell
@@ -37,7 +24,7 @@ import { AlertLog } from './components/AlertLog';
 let logIdCounter = 0;
 
 export default function App() {
-  const { victims: backendVictims, logs: backendLogs, connected, locked, needsSetup, unlockError, autoDeploy, alertLog, sendCommand, unlockServer, setupPassword, clearUnlockError } = useSocket();
+  const { victims: backendVictims, logs: backendLogs, connected, locked, needsSetup, unlockError, autoDeploy, alertLog, sendCommand, unlockServer, setupPassword, clearUnlockError, clearLogs } = useSocket();
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -130,6 +117,7 @@ export default function App() {
   };
 
   const handleClearLogs = () => {
+    clearLogs();
     setToastMessage({
       title: 'BUFFER CLEARED',
       message: 'Local telemetry storage buffer flushed successfully',

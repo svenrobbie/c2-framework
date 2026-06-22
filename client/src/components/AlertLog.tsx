@@ -29,7 +29,16 @@ export const AlertLog: React.FC<AlertLogProps> = ({ liveEntries }) => {
     fetchLog();
   }, [filterHost]);
 
-  const allEntries = [...entries];
+  // Merge REST-fetched entries with live socket entries, deduplicated by rule+hostname+timestamp
+  const seen = new Set<string>();
+  const merged = [...entries, ...liveEntries].filter(e => {
+    const key = `${e.rule}|${e.hostname}|${e.timestamp}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  // Sort by timestamp descending
+  merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
   return (
     <div className="flex flex-col gap-3">
@@ -49,12 +58,12 @@ export const AlertLog: React.FC<AlertLogProps> = ({ liveEntries }) => {
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1.5">
-        {allEntries.length === 0 && (
+        {merged.length === 0 && (
           <div className="text-center py-8 text-slate-600 font-mono text-xs italic">
             &lt; No alert events recorded &gt;
           </div>
         )}
-        {allEntries.map((e, i) => (
+        {merged.map((e, i) => (
           <div key={i} className="bg-slate-900/40 border border-slate-800/60 rounded-lg p-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">{e.rule}</span>
