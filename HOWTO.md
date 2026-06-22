@@ -102,7 +102,6 @@ This project simulates ransomware in a controlled environment. It demonstrates:
 │   ├── evasion.py          → AMSI bypass, delayed exec, registry.pol
 │   └── browser_stealer.py  → Chrome/Firefox/Brave/Edge profile exfil
 ├── dist/                   → Compiled binaries (linux/ + windows/)
-├── Backup - Keys/          → RSA/ECC keypair backups
 ├── requirements.txt
 ├── README.md
 └── HOWTO.md
