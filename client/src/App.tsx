@@ -7,7 +7,8 @@ import {
   Search,
   Moon,
   Package,
-  Bell
+  Bell,
+  Power,
 } from 'lucide-react';
 import useSocket from './hooks/useSocket';
 import { Victim, LogEntry, backendVictimToDashboard, backendLogToDashboard, COMMAND_MAP } from './types';
